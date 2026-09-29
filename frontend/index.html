@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PhoneLens</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="background"></div>
+
+  <main class="app">
+    <header class="header">
+      <div class="logo">PL</div>
+      <div>
+        <h1>PhoneLens</h1>
+        <p>Public Data Lookup</p>
+      </div>
+      <span class="status">
+        <span class="dot"></span>
+        API Online
+      </span>
+    </header>
+
+    <section class="hero">
+      <div class="badge">PHONE LOOKUP</div>
+
+      <h2>Search a phone number</h2>
+
+      <p class="subtitle">
+        Check information available from lawful public data sources.
+      </p>
+
+      <form id="searchForm">
+        <div class="input-box">
+          <span class="prefix">📱</span>
+          <input
+            id="phoneInput"
+            type="tel"
+            placeholder="Enter phone number"
+            autocomplete="off"
+            required
+          >
+          <button type="button" id="clearBtn">×</button>
+        </div>
+
+        <button class="search-btn" type="submit">
+          <span id="buttonText">Search Number</span>
+          <span id="loader" class="loader hidden"></span>
+        </button>
+      </form>
+
+      <p id="error" class="error hidden"></p>
+    </section>
+
+    <section id="resultSection" class="results hidden">
+
+      <div class="result-header">
+        <div>
+          <span class="small-title">SEARCH RESULT</span>
+          <h3>Lookup Result</h3>
+        </div>
+
+        <span class="checked">✓ Checked</span>
+      </div>
+
+      <div class="number-card">
+        <span>PHONE NUMBER</span>
+        <strong id="resultNumber">—</strong>
+      </div>
+
+      <div id="resultList"></div>
+
+      <div class="notice">
+        <strong>Privacy notice</strong>
+        <p>
+          PhoneLens only displays information returned by its connected
+          public/lawful data sources. It does not provide private,
+          leaked, or restricted personal information.
+        </p>
+      </div>
+
+    </section>
+
+    <footer>
+      <span>PhoneLens</span>
+      <span>•</span>
+      <span>API Status: Online</span>
+    </footer>
+
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
