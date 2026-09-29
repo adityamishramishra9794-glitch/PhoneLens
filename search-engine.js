@@ -1,8 +1,23 @@
 async function searchPhoneNumber(phoneNumber) {
+  const cleaned = phoneNumber.replace(/[^\d+]/g, "");
+
+  if (!cleaned) {
+    return {
+      phoneNumber,
+      results: [],
+      message: "Invalid phone number"
+    };
+  }
+
   return {
-    phoneNumber,
-    results: [],
-    message: "Search engine is ready"
+    phoneNumber: cleaned,
+    results: [
+      {
+        type: "input",
+        value: cleaned
+      }
+    ],
+    message: "Phone number received successfully"
   };
 }
 
