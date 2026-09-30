@@ -68,32 +68,31 @@ function renderResults(data) {
   resultNumber.textContent = data.phoneNumber || "—";
   resultList.innerHTML = "";
 
-  /*
-   * Prefer the structured `data` object from our backend.
-   * This gives us predictable cards even if the API
-   * returns fields in a different order.
-   */
-
   const phoneData = data.data || {};
 
   const fields = [
-    ["Validity", phoneData.valid === true
-      ? "Valid number"
-      : phoneData.valid === false
-        ? "Invalid number"
-        : null
+    [
+      "Validity",
+      phoneData.valid === true
+        ? "Valid number"
+        : phoneData.valid === false
+          ? "Invalid number"
+          : null
     ],
 
-    ["Possible", phoneData.possible === true
-      ? "Possible number"
-      : phoneData.possible === false
-        ? "Not possible"
-        : null
+    [
+      "Possible",
+      phoneData.possible === true
+        ? "Number format is possible"
+        : phoneData.possible === false
+          ? "Number format is not possible"
+          : null
     ],
 
     ["Country", phoneData.country],
 
-    ["Country Code",
+    [
+      "Country Code",
       phoneData.countryCode
         ? `+${phoneData.countryCode}`
         : null
@@ -103,20 +102,50 @@ function renderResults(data) {
 
     ["Line Type", phoneData.type],
 
-    ["Location", phoneData.location],
+    ["Geographic Region", phoneData.location],
 
     ["Timezone", phoneData.timezone],
 
-    ["International Format",
+    [
+      "Area Code",
+      phoneData.components?.areaCode
+    ],
+
+    [
+      "Local Number",
+      phoneData.components?.localNumber
+    ],
+
+    [
+      "Extension",
+      phoneData.components?.extension
+    ],
+
+    [
+      "International Format",
       phoneData.formats?.international
     ],
 
-    ["National Format",
+    [
+      "National Format",
       phoneData.formats?.national
     ],
 
-    ["E.164 Format",
+    [
+      "E.164 Format",
       phoneData.formats?.e164
+    ],
+
+    [
+      "Sanitized Number",
+      phoneData.sanitized
+    ],
+
+    [
+      "Possible Number Types",
+      Array.isArray(phoneData.possibleTypes)
+        ? phoneData.possibleTypes.join(", ")
+        : null
     ]
   ];
 
@@ -129,11 +158,62 @@ function renderResults(data) {
   });
 
   /*
-   * If structured data is unavailable,
-   * fall back to the result array.
+   * Public Web Search
    */
+  const publicWeb = data.publicWeb;
 
-  if (resultList.children.length === 0 && Array.isArray(data.results)) {
+  if (
+    publicWeb &&
+    Array.isArray(publicWeb.searches) &&
+    publicWeb.searches.length > 0
+  ) {
+    const section = document.createElement("div");
+    section.className = "result-item";
+
+    const title = document.createElement("div");
+    title.className = "label";
+    title.textContent = "PUBLIC WEB SEARCH";
+
+    section.appendChild(title);
+
+    const note = document.createElement("div");
+    note.className = "value";
+    note.textContent =
+      "Search publicly indexed webpages for this number.";
+
+    note.style.marginBottom = "12px";
+
+    section.appendChild(note);
+
+    publicWeb.searches.forEach((search) => {
+      const link = document.createElement("a");
+
+      link.href = search.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+
+      link.textContent =
+        `Open ${search.engine} Search`;
+
+      link.style.display = "block";
+      link.style.marginTop = "8px";
+      link.style.color = "#93c5fd";
+      link.style.textDecoration = "none";
+      link.style.fontWeight = "600";
+
+      section.appendChild(link);
+    });
+
+    resultList.appendChild(section);
+  }
+
+  /*
+   * Fallback for old API response
+   */
+  if (
+    resultList.children.length === 0 &&
+    Array.isArray(data.results)
+  ) {
     data.results.forEach((result) => {
       const item = createResultItem(
         result.type || "Information",
@@ -147,13 +227,12 @@ function renderResults(data) {
   }
 
   /*
-   * Nothing returned.
+   * Nothing found
    */
-
   if (resultList.children.length === 0) {
     const item = createResultItem(
       "Result",
-      "No public results returned."
+      "No public information returned."
     );
 
     if (item) {
@@ -163,7 +242,6 @@ function renderResults(data) {
 
   resultSection.classList.remove("hidden");
 
-  // Smoothly bring results into view
   setTimeout(() => {
     resultSection.scrollIntoView({
       behavior: "smooth",
@@ -185,14 +263,8 @@ searchForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  /*
-   * Keep digits and a possible leading +.
-   */
   let cleaned = phone.replace(/[^\d+]/g, "");
 
-  /*
-   * Prevent malformed multiple + signs.
-   */
   if (cleaned.includes("+")) {
     cleaned =
       "+" +
@@ -201,10 +273,6 @@ searchForm.addEventListener("submit", async (event) => {
         .replace(/\D/g, "");
   }
 
-  /*
-   * Basic client-side validation.
-   * Backend performs the real validation.
-   */
   const digitsOnly = cleaned.replace(/\D/g, "");
 
   if (digitsOnly.length < 7) {
@@ -230,7 +298,9 @@ searchForm.addEventListener("submit", async (event) => {
     try {
       data = await response.json();
     } catch {
-      throw new Error("Invalid response from PhoneLens API.");
+      throw new Error(
+        "Invalid response from PhoneLens API."
+      );
     }
 
     if (!response.ok || !data.success) {
