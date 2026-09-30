@@ -38,41 +38,138 @@ function showError(message) {
   errorBox.classList.remove("hidden");
 }
 
+function createResultItem(label, value) {
+  if (
+    value === null ||
+    value === undefined ||
+    String(value).trim() === ""
+  ) {
+    return null;
+  }
+
+  const item = document.createElement("div");
+  item.className = "result-item";
+
+  const labelElement = document.createElement("div");
+  labelElement.className = "label";
+  labelElement.textContent = label;
+
+  const valueElement = document.createElement("div");
+  valueElement.className = "value";
+  valueElement.textContent = String(value);
+
+  item.appendChild(labelElement);
+  item.appendChild(valueElement);
+
+  return item;
+}
+
 function renderResults(data) {
   resultNumber.textContent = data.phoneNumber || "—";
   resultList.innerHTML = "";
 
-  if (!Array.isArray(data.results) || data.results.length === 0) {
-    const item = document.createElement("div");
-    item.className = "result-item";
+  /*
+   * Prefer the structured `data` object from our backend.
+   * This gives us predictable cards even if the API
+   * returns fields in a different order.
+   */
 
-    item.innerHTML = `
-      <div class="label">Result</div>
-      <div class="value">No public results returned.</div>
-    `;
+  const phoneData = data.data || {};
 
-    resultList.appendChild(item);
-  } else {
-    data.results.forEach((result) => {
-      const item = document.createElement("div");
-      item.className = "result-item";
+  const fields = [
+    ["Validity", phoneData.valid === true
+      ? "Valid number"
+      : phoneData.valid === false
+        ? "Invalid number"
+        : null
+    ],
 
-      const label = document.createElement("div");
-      label.className = "label";
-      label.textContent = result.type || "Information";
+    ["Possible", phoneData.possible === true
+      ? "Possible number"
+      : phoneData.possible === false
+        ? "Not possible"
+        : null
+    ],
 
-      const value = document.createElement("div");
-      value.className = "value";
-      value.textContent = result.value || "";
+    ["Country", phoneData.country],
 
-      item.appendChild(label);
-      item.appendChild(value);
+    ["Country Code",
+      phoneData.countryCode
+        ? `+${phoneData.countryCode}`
+        : null
+    ],
 
+    ["Carrier", phoneData.carrier],
+
+    ["Line Type", phoneData.type],
+
+    ["Location", phoneData.location],
+
+    ["Timezone", phoneData.timezone],
+
+    ["International Format",
+      phoneData.formats?.international
+    ],
+
+    ["National Format",
+      phoneData.formats?.national
+    ],
+
+    ["E.164 Format",
+      phoneData.formats?.e164
+    ]
+  ];
+
+  fields.forEach(([label, value]) => {
+    const item = createResultItem(label, value);
+
+    if (item) {
       resultList.appendChild(item);
+    }
+  });
+
+  /*
+   * If structured data is unavailable,
+   * fall back to the result array.
+   */
+
+  if (resultList.children.length === 0 && Array.isArray(data.results)) {
+    data.results.forEach((result) => {
+      const item = createResultItem(
+        result.type || "Information",
+        result.value || ""
+      );
+
+      if (item) {
+        resultList.appendChild(item);
+      }
     });
   }
 
+  /*
+   * Nothing returned.
+   */
+
+  if (resultList.children.length === 0) {
+    const item = createResultItem(
+      "Result",
+      "No public results returned."
+    );
+
+    if (item) {
+      resultList.appendChild(item);
+    }
+  }
+
   resultSection.classList.remove("hidden");
+
+  // Smoothly bring results into view
+  setTimeout(() => {
+    resultSection.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  }, 100);
 }
 
 searchForm.addEventListener("submit", async (event) => {
@@ -88,9 +185,29 @@ searchForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  const digits = phone.replace(/[^\d+]/g, "");
+  /*
+   * Keep digits and a possible leading +.
+   */
+  let cleaned = phone.replace(/[^\d+]/g, "");
 
-  if (digits.length < 7) {
+  /*
+   * Prevent malformed multiple + signs.
+   */
+  if (cleaned.includes("+")) {
+    cleaned =
+      "+" +
+      cleaned
+        .replace(/\+/g, "")
+        .replace(/\D/g, "");
+  }
+
+  /*
+   * Basic client-side validation.
+   * Backend performs the real validation.
+   */
+  const digitsOnly = cleaned.replace(/\D/g, "");
+
+  if (digitsOnly.length < 7) {
     showError("Please enter a valid phone number.");
     return;
   }
@@ -98,20 +215,36 @@ searchForm.addEventListener("submit", async (event) => {
   setLoading(true);
 
   try {
-    const response = await fetch(
-      `${API_URL}/api/search?phone=${encodeURIComponent(digits)}`
-    );
+    const url =
+      `${API_URL}/api/search?phone=${encodeURIComponent(cleaned)}`;
 
-    const data = await response.json();
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json"
+      }
+    });
+
+    let data;
+
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error("Invalid response from PhoneLens API.");
+    }
 
     if (!response.ok || !data.success) {
-      throw new Error(data.error || "Search failed.");
+      throw new Error(
+        data.error ||
+        data.message ||
+        "PhoneLens search failed."
+      );
     }
 
     renderResults(data);
 
   } catch (error) {
-    console.error(error);
+    console.error("PhoneLens error:", error);
 
     showError(
       "Unable to connect to PhoneLens API. Please try again."
