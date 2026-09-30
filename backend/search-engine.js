@@ -1,339 +1,334 @@
 const https = require("https");
 
-/*
- * PhoneLens Search Engine
- *
- * Features:
- * - Cleans and normalizes phone numbers
- * - Automatically assumes India (+91) for 10-digit numbers
- * - Uses the free libphonenumber API
- * - Has a timeout so requests don't hang forever
- * - Converts API data into a stable PhoneLens format
- * - Keeps the same exported function used by server.js
- */
+const PHONE_API =
+  "https://libphonenumberapi.com/api/phone-numbers/";
 
-const API_HOST = "libphonenumberapi.com";
-const API_TIMEOUT = 10000;
+function normalizePhone(input) {
+  let value = String(input || "").trim();
 
-/**
- * Make HTTPS GET request.
- */
-function httpsGet(path) {
+  value = value.replace(/[^\d+]/g, "");
+
+  if (value.startsWith("+")) {
+    return "+" + value.slice(1).replace(/\D/g, "");
+  }
+
+  const digits = value.replace(/\D/g, "");
+
+  // India default for 10-digit numbers
+  if (digits.length === 10) {
+    return "+91" + digits;
+  }
+
+  return digits;
+}
+
+function getJSON(url, timeout = 10000) {
   return new Promise((resolve, reject) => {
     const request = https.get(
+      url,
       {
-        hostname: API_HOST,
-        path,
         headers: {
-          "User-Agent": "PhoneLens/1.0",
-          Accept: "application/json"
+          Accept: "application/json",
+          "User-Agent": "PhoneLens/1.0"
         }
       },
       (response) => {
         let body = "";
-
-        response.setEncoding("utf8");
 
         response.on("data", (chunk) => {
           body += chunk;
         });
 
         response.on("end", () => {
-          let data = null;
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            reject(
+              new Error(`HTTP ${response.statusCode}`)
+            );
+            return;
+          }
 
           try {
-            data = JSON.parse(body);
-          } catch (error) {
-            return reject(
-              new Error(
-                `Invalid JSON response from API (HTTP ${response.statusCode})`
-              )
-            );
+            resolve(JSON.parse(body));
+          } catch {
+            reject(new Error("Invalid JSON response"));
           }
-
-          if (response.statusCode < 200 || response.statusCode >= 300) {
-            return reject(
-              new Error(
-                data?.message ||
-                data?.error ||
-                `Phone API returned HTTP ${response.statusCode}`
-              )
-            );
-          }
-
-          resolve(data);
         });
       }
     );
 
-    request.setTimeout(API_TIMEOUT, () => {
-      request.destroy();
-      reject(new Error("Phone API request timed out"));
+    request.setTimeout(timeout, () => {
+      request.destroy(new Error("Request timeout"));
     });
 
-    request.on("error", (error) => {
-      reject(error);
-    });
+    request.on("error", reject);
   });
 }
 
-/**
- * Normalize user input.
- */
-function normalizePhoneNumber(phoneNumber) {
-  let number = String(phoneNumber || "").trim();
-
-  // Convert common Unicode plus sign to normal +
-  number = number.replace(/＋/g, "+");
-
-  // Keep only digits and +
-  number = number.replace(/[^\d+]/g, "");
-
-  // Only one + and it must be at the beginning
-  if (number.includes("+")) {
-    number =
-      "+" +
-      number
-        .replace(/\+/g, "")
-        .replace(/[^\d]/g, "");
-  }
-
-  // India:
-  // 9876543210 -> +919876543210
-  if (/^\d{10}$/.test(number)) {
-    number = `+91${number}`;
-  }
-
-  return number;
-}
-
-/**
- * Convert API response into PhoneLens result items.
- */
-function buildResults(data) {
-  const results = [];
-
-  function add(type, value) {
-    if (
-      value !== undefined &&
-      value !== null &&
-      String(value).trim() !== ""
-    ) {
-      results.push({
-        type,
-        value: String(value)
-      });
-    }
-  }
-
-  // Validity
-  if (typeof data.is_valid !== "undefined") {
-    add(
-      "validation",
-      data.is_valid ? "Valid number" : "Invalid number"
-    );
-  }
-
-  // Possible number
-  if (typeof data.is_possible !== "undefined") {
-    add(
-      "possible",
-      data.is_possible
-        ? "Number format is possible"
-        : "Number format is not possible"
-    );
-  }
-
-  // Country
-  add("country", data.country);
-
-  // Country calling code
-  if (data.components && data.components.country_code) {
-    add("country code", `+${data.components.country_code}`);
-  }
-
-  // Carrier
-  add("carrier", data.carrier);
-
-  // Number type
-  add("line type", data.type);
-
-  // Geographic information
-  add("location", data.geo_name);
-
-  // Timezone
-  add("timezone", data.timezone);
-
-  // International format
-  if (data.formats) {
-    add("international format", data.formats.international);
-  }
-
-  // National format
-  if (data.formats) {
-    add("national format", data.formats.national);
-  }
-
-  // E.164 format
-  if (data.formats) {
-    add("E.164 format", data.formats.e164);
-  }
-
-  // Sanitized number
-  add("sanitized number", data.sanitized);
-
-  // Possible number types
+function addResult(results, type, value) {
   if (
-    Array.isArray(data.possible_types) &&
-    data.possible_types.length > 0
+    value === null ||
+    value === undefined ||
+    String(value).trim() === ""
   ) {
-    add(
-      "possible types",
-      data.possible_types.join(", ")
-    );
+    return;
   }
 
-  return results;
+  results.push({
+    type,
+    value: String(value)
+  });
 }
 
-/**
- * Main PhoneLens search function.
+/*
+ * Public-web links.
+ *
+ * These are search links, not scraped private databases.
+ * The user can open the search result and inspect the
+ * publicly indexed page themselves.
  */
+function buildPublicSearches(phone, normalized) {
+  const searches = [];
+
+  const clean = String(phone || "")
+    .replace(/[^\d]/g, "");
+
+  const normalizedClean = String(normalized || "")
+    .replace(/[^\d]/g, "");
+
+  if (clean) {
+    searches.push({
+      title: "Google Search",
+      engine: "Google",
+      url:
+        "https://www.google.com/search?q=" +
+        encodeURIComponent('"' + clean + '"')
+    });
+
+    searches.push({
+      title: "Bing Search",
+      engine: "Bing",
+      url:
+        "https://www.bing.com/search?q=" +
+        encodeURIComponent('"' + clean + '"')
+    });
+  }
+
+  if (
+    normalizedClean &&
+    normalizedClean !== clean
+  ) {
+    searches.push({
+      title: "Google International Search",
+      engine: "Google",
+      url:
+        "https://www.google.com/search?q=" +
+        encodeURIComponent('"' + normalizedClean + '"')
+    });
+  }
+
+  return searches;
+}
+
 async function searchPhoneNumber(phoneNumber) {
-  const originalInput = String(phoneNumber || "").trim();
+  const normalized = normalizePhone(phoneNumber);
 
-  if (!originalInput) {
-    return {
-      phoneNumber: "",
-      results: [],
-      message: "Phone number is required."
-    };
+  if (!normalized) {
+    throw new Error("Phone number is required");
   }
 
-  const number = normalizePhoneNumber(originalInput);
+  const apiURL =
+    PHONE_API +
+    encodeURIComponent(normalized);
 
-  if (!number) {
-    return {
-      phoneNumber: originalInput,
-      results: [],
-      message: "Invalid phone number format."
-    };
-  }
-
-  /*
-   * The + sign must be URL encoded.
-   * encodeURIComponent("+919876543210")
-   * becomes %2B919876543210
-   */
-  const encodedNumber = encodeURIComponent(number);
-
-  /*
-   * Current documented endpoint:
-   * /api/phone-numbers/{phone_number}
-   */
-  const path = `/api/phone-numbers/${encodedNumber}`;
+  let apiData = {};
 
   try {
-    const data = await httpsGet(path);
-
-    const results = buildResults(data);
-
-    const finalPhoneNumber =
-      data?.formats?.e164 ||
-      data?.formats?.international ||
-      number;
-
-    return {
-      phoneNumber: finalPhoneNumber,
-
-      searchedNumber: originalInput,
-
-      normalizedNumber: number,
-
-      results,
-
-      data: {
-        valid:
-          typeof data.is_valid !== "undefined"
-            ? data.is_valid
-            : null,
-
-        possible:
-          typeof data.is_possible !== "undefined"
-            ? data.is_possible
-            : null,
-
-        country: data.country || null,
-
-        countryCode:
-          data?.components?.country_code || null,
-
-        carrier: data.carrier || null,
-
-        type: data.type || null,
-
-        location: data.geo_name || null,
-
-        timezone: data.timezone || null,
-
-        formats: {
-          e164: data?.formats?.e164 || null,
-          international:
-            data?.formats?.international || null,
-          national:
-            data?.formats?.national || null
-        },
-
-        possibleTypes:
-          Array.isArray(data.possible_types)
-            ? data.possible_types
-            : []
-      },
-
-      message: "Phone number lookup completed successfully."
-    };
+    apiData = await getJSON(apiURL);
   } catch (error) {
     console.error(
-      "Phone API error:",
+      "Phone metadata API error:",
       error.message
     );
-
-    /*
-     * Important:
-     * Don't crash the server if the external API
-     * temporarily fails.
-     */
-
-    return {
-      phoneNumber: number,
-
-      searchedNumber: originalInput,
-
-      normalizedNumber: number,
-
-      results: [],
-
-      data: {
-        valid: null,
-        possible: null,
-        country: null,
-        countryCode: null,
-        carrier: null,
-        type: null,
-        location: null,
-        timezone: null,
-        formats: {
-          e164: number,
-          international: null,
-          national: null
-        },
-        possibleTypes: []
-      },
-
-      message:
-        "Phone number could not be looked up right now. Please try again."
-    };
   }
+
+  const components =
+    apiData.components || {};
+
+  const formats =
+    apiData.formats || {};
+
+  const data = {
+    valid:
+      typeof apiData.is_valid === "boolean"
+        ? apiData.is_valid
+        : null,
+
+    possible:
+      typeof apiData.is_possible === "boolean"
+        ? apiData.is_possible
+        : null,
+
+    country:
+      apiData.country ?? null,
+
+    countryCode:
+      components.country_code ?? null,
+
+    carrier:
+      apiData.carrier ?? null,
+
+    type:
+      apiData.type ?? null,
+
+    location:
+      apiData.geo_name ?? null,
+
+    timezone:
+      apiData.timezone ?? null,
+
+    components: {
+      areaCode:
+        components.area_code ?? null,
+
+      countryCode:
+        components.country_code ?? null,
+
+      extension:
+        components.extension ?? null,
+
+      localNumber:
+        components.local_number ?? null
+    },
+
+    formats: {
+      e164:
+        formats.e164 ?? null,
+
+      international:
+        formats.international ?? null,
+
+      national:
+        formats.national ?? null
+    },
+
+    possibleTypes:
+      Array.isArray(apiData.possible_types)
+        ? apiData.possible_types
+        : [],
+
+    sanitized:
+      apiData.sanitized ?? null
+  };
+
+  const results = [];
+
+  addResult(
+    results,
+    "Validation",
+    data.valid === true
+      ? "Valid number"
+      : data.valid === false
+        ? "Invalid number"
+        : null
+  );
+
+  addResult(
+    results,
+    "Possible",
+    data.possible === true
+      ? "Number format is possible"
+      : data.possible === false
+        ? "Number format is not possible"
+        : null
+  );
+
+  addResult(results, "Country", data.country);
+
+  addResult(
+    results,
+    "Country Code",
+    data.countryCode
+      ? "+" + data.countryCode
+      : null
+  );
+
+  addResult(results, "Carrier", data.carrier);
+  addResult(results, "Line Type", data.type);
+  addResult(results, "Geographic Region", data.location);
+  addResult(results, "Timezone", data.timezone);
+
+  addResult(
+    results,
+    "Area Code",
+    data.components.areaCode
+  );
+
+  addResult(
+    results,
+    "Local Number",
+    data.components.localNumber
+  );
+
+  addResult(
+    results,
+    "International Format",
+    data.formats.international
+  );
+
+  addResult(
+    results,
+    "National Format",
+    data.formats.national
+  );
+
+  addResult(
+    results,
+    "E.164 Format",
+    data.formats.e164
+  );
+
+  if (data.possibleTypes.length) {
+    addResult(
+      results,
+      "Possible Types",
+      data.possibleTypes.join(", ")
+    );
+  }
+
+  /*
+   * Public search links
+   */
+  const publicSearches =
+    buildPublicSearches(
+      phoneNumber,
+      normalized
+    );
+
+  return {
+    phoneNumber: normalized,
+
+    searchedNumber:
+      String(phoneNumber || ""),
+
+    normalizedNumber: normalized,
+
+    results,
+
+    data,
+
+    publicWeb: {
+      available: publicSearches.length > 0,
+      note:
+        "These links search publicly indexed web pages. " +
+        "PhoneLens does not access private or leaked databases.",
+      searches: publicSearches
+    },
+
+    source: "libphonenumberapi",
+
+    message:
+      "Phone number lookup completed successfully."
+  };
 }
 
 module.exports = {
