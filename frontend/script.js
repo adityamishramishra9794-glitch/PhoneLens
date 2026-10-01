@@ -11,26 +11,42 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelector("#searchButton") ||
     document.querySelector("#searchBtn") ||
     [...document.querySelectorAll("button")].find(btn =>
-      btn.textContent.toLowerCase().includes("search number")
+      btn.textContent.trim().toLowerCase().includes("search number")
     );
 
   if (!input || !button) {
-    console.error("PhoneLens: input/button not found.");
+    console.error("PhoneLens: input or search button not found.");
     return;
   }
 
-  // Find existing result section
+  /*
+   * Find the ORIGINAL result area.
+   * We intentionally support multiple possible IDs/classes.
+   */
   let resultsContainer =
     document.querySelector("#results") ||
     document.querySelector("#result") ||
-    document.querySelector(".results");
+    document.querySelector("#lookupResult") ||
+    document.querySelector("#searchResult") ||
+    document.querySelector(".results") ||
+    document.querySelector(".result");
 
-  // If not found, create one
+  /*
+   * If the existing HTML doesn't have a result container,
+   * create one after the search area.
+   */
   if (!resultsContainer) {
     resultsContainer = document.createElement("div");
     resultsContainer.id = "results";
-    button.closest("section, main, div")?.after(resultsContainer);
-    if (!resultsContainer.parentElement) {
+
+    const parent =
+      button.closest("section") ||
+      button.closest("main") ||
+      button.parentElement;
+
+    if (parent) {
+      parent.appendChild(resultsContainer);
+    } else {
       document.body.appendChild(resultsContainer);
     }
   }
@@ -58,8 +74,10 @@ document.addEventListener("DOMContentLoaded", () => {
     resultsContainer.innerHTML = `
       <div class="pl-loading">
         <div class="pl-spinner"></div>
-        <div>Searching PhoneLens...</div>
-        <small>Checking number information and public web results</small>
+        <strong>Searching PhoneLens...</strong>
+        <small>
+          Checking phone metadata and public web results
+        </small>
       </div>
     `;
 
@@ -67,13 +85,43 @@ document.addEventListener("DOMContentLoaded", () => {
       const url =
         `${API_BASE}/api/search?phone=${encodeURIComponent(phone)}`;
 
-      const response = await fetch(url);
+      console.log("PhoneLens API:", url);
 
-      const data = await response.json();
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Accept: "application/json"
+        }
+      });
 
-      if (!response.ok || !data.success) {
+      const rawText = await response.text();
+
+      console.log("PhoneLens HTTP status:", response.status);
+      console.log("PhoneLens raw response:", rawText);
+
+      let data;
+
+      try {
+        data = JSON.parse(rawText);
+      } catch {
         throw new Error(
-          data.error || "Search failed."
+          "API returned an invalid response. Check the backend."
+        );
+      }
+
+      console.log("PhoneLens parsed response:", data);
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+          `API request failed (${response.status})`
+        );
+      }
+
+      if (data.success !== true) {
+        throw new Error(
+          data.error ||
+          "PhoneLens search failed."
         );
       }
 
@@ -86,26 +134,73 @@ document.addEventListener("DOMContentLoaded", () => {
         error.message ||
         "Unable to connect to PhoneLens API."
       );
-
     } finally {
       button.disabled = false;
       button.textContent = "Search Number";
     }
   }
 
-  function renderResults(data) {
-    const info = data.data || {};
-    const components = info.components || {};
-    const formats = info.formats || {};
-    const publicWeb = data.publicWeb || {};
+  function renderResults(response) {
+    /*
+     * Backend structure:
+     *
+     * {
+     *   success: true,
+     *   phoneNumber: "...",
+     *   searchedNumber: "...",
+     *   normalizedNumber: "...",
+     *   results: [],
+     *   data: {},
+     *   publicWeb: {}
+     * }
+     */
+
+    const info =
+      response.data &&
+      typeof response.data === "object"
+        ? response.data
+        : {};
+
+    const components =
+      info.components &&
+      typeof info.components === "object"
+        ? info.components
+        : {};
+
+    const formats =
+      info.formats &&
+      typeof info.formats === "object"
+        ? info.formats
+        : {};
+
+    const publicWeb =
+      response.publicWeb &&
+      typeof response.publicWeb === "object"
+        ? response.publicWeb
+        : {};
+
+    /*
+     * IMPORTANT:
+     * Backend definitely returns phoneNumber.
+     */
+    const displayedPhone =
+      response.phoneNumber ||
+      response.normalizedNumber ||
+      response.searchedNumber ||
+      "-";
 
     resultsContainer.innerHTML = `
       <div class="pl-result-wrapper">
 
         <div class="pl-result-header">
           <div>
-            <div class="pl-small-title">SEARCH RESULT</div>
-            <h2>Lookup Result</h2>
+            <div class="pl-small-title">
+              SEARCH RESULT
+            </div>
+
+            <h2>
+              Lookup Result
+            </h2>
           </div>
 
           <div class="pl-checked">
@@ -115,9 +210,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
         <div class="pl-phone-card">
           <span>PHONE NUMBER</span>
-          <strong>${escapeHTML(
-            data.phoneNumber || data.normalizedNumber || "-"
-          )}</strong>
+
+          <strong>
+            ${escapeHTML(displayedPhone)}
+          </strong>
         </div>
 
         <div class="pl-grid">
@@ -149,9 +245,15 @@ document.addEventListener("DOMContentLoaded", () => {
               : null
           )}
 
-          ${card("CARRIER", info.carrier)}
+          ${card(
+            "CARRIER",
+            info.carrier
+          )}
 
-          ${card("LINE TYPE", info.type)}
+          ${card(
+            "LINE TYPE",
+            info.type
+          )}
 
           ${card(
             "GEOGRAPHIC REGION",
@@ -210,7 +312,10 @@ document.addEventListener("DOMContentLoaded", () => {
         ${renderPublicWeb(publicWeb)}
 
         <div class="pl-privacy">
-          <strong>Privacy notice</strong>
+          <strong>
+            Privacy notice
+          </strong>
+
           <p>
             PhoneLens displays information returned by
             its configured public-data services. It does not
@@ -226,23 +331,33 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderPublicWeb(publicWeb) {
-    const webResults = Array.isArray(publicWeb.results)
-      ? publicWeb.results
-      : [];
+    const webResults =
+      Array.isArray(publicWeb.results)
+        ? publicWeb.results
+        : [];
 
-    if (!webResults.length) {
+    if (webResults.length === 0) {
       return `
         <section class="pl-web-section">
+
           <div class="pl-web-header">
+
             <div>
-              <div class="pl-small-title">PUBLIC WEB</div>
-              <h2>Public Web Results</h2>
+              <div class="pl-small-title">
+                PUBLIC WEB
+              </div>
+
+              <h2>
+                Public Web Results
+              </h2>
             </div>
+
           </div>
 
           <div class="pl-no-results">
             No public web results were found.
           </div>
+
         </section>
       `;
     }
@@ -251,14 +366,21 @@ document.addEventListener("DOMContentLoaded", () => {
       <section class="pl-web-section">
 
         <div class="pl-web-header">
+
           <div>
-            <div class="pl-small-title">TAVILY SEARCH</div>
-            <h2>Public Web Results</h2>
+            <div class="pl-small-title">
+              TAVILY SEARCH
+            </div>
+
+            <h2>
+              Public Web Results
+            </h2>
           </div>
 
           <div class="pl-result-count">
             ${webResults.length} results
           </div>
+
         </div>
 
         <div class="pl-web-list">
@@ -285,7 +407,9 @@ document.addEventListener("DOMContentLoaded", () => {
             let domain = "";
 
             try {
-              domain = new URL(url).hostname;
+              domain = url
+                ? new URL(url).hostname
+                : "";
             } catch {
               domain = url;
             }
@@ -347,6 +471,7 @@ document.addEventListener("DOMContentLoaded", () => {
           }).join("")}
 
         </div>
+
       </section>
     `;
   }
@@ -362,8 +487,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
     return `
       <div class="pl-info-card">
-        <span>${escapeHTML(label)}</span>
-        <strong>${escapeHTML(String(value))}</strong>
+
+        <span>
+          ${escapeHTML(label)}
+        </span>
+
+        <strong>
+          ${escapeHTML(String(value))}
+        </strong>
+
       </div>
     `;
   }
@@ -371,8 +503,15 @@ document.addEventListener("DOMContentLoaded", () => {
   function showError(message) {
     resultsContainer.innerHTML = `
       <div class="pl-error">
-        <strong>Search failed</strong>
-        <p>${escapeHTML(message)}</p>
+
+        <strong>
+          Search failed
+        </strong>
+
+        <p>
+          ${escapeHTML(message)}
+        </p>
+
       </div>
     `;
 
@@ -393,13 +532,17 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function injectStyles() {
-    if (document.querySelector("#phonelens-web-styles")) {
+    if (
+      document.querySelector("#phonelens-web-styles")
+    ) {
       return;
     }
 
-    const style = document.createElement("style");
+    const style =
+      document.createElement("style");
 
-    style.id = "phonelens-web-styles";
+    style.id =
+      "phonelens-web-styles";
 
     style.textContent = `
       .pl-result-wrapper {
@@ -461,13 +604,15 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       .pl-phone-card strong {
+        display: block;
         font-size: 25px;
         word-break: break-word;
       }
 
       .pl-grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns:
+          repeat(2, minmax(0, 1fr));
         gap: 14px;
       }
 
@@ -562,7 +707,11 @@ document.addEventListener("DOMContentLoaded", () => {
         padding: 9px 14px;
         border-radius: 10px;
         text-decoration: none;
-        background: linear-gradient(90deg, #315ff5, #7b3ff2);
+        background: linear-gradient(
+          90deg,
+          #315ff5,
+          #7b3ff2
+        );
         color: white;
         font-size: 13px;
         font-weight: 700;
@@ -630,6 +779,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       @media (max-width: 600px) {
+
         .pl-grid {
           grid-template-columns: 1fr;
         }
@@ -641,6 +791,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
         .pl-web-card {
           padding: 16px;
+        }
+
+        .pl-phone-card strong {
+          font-size: 21px;
         }
       }
     `;
