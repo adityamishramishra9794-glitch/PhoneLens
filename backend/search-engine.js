@@ -259,15 +259,8 @@ async function searchPublicWeb(phoneNumber, normalized) {
   }
 
   try {
-    const jobs = [
-      // each variant searched separately
-      ...exactQueries.map((q) => tavilySearch(q)),
-
-      // targeted search on profile sites
-      tavilySearch(`${indianLocal || normalizedDigits} contact profile`, {
-        include_domains: PROFILE_DOMAINS
-      })
-    ];
+    // each exact variant searched separately
+    const jobs = exactQueries.map((q) => tavilySearch(q));
 
     const settled = await Promise.allSettled(jobs);
 
@@ -309,7 +302,7 @@ async function searchPublicWeb(phoneNumber, normalized) {
           confidence: exactMatch ? "high" : "low"
         };
       })
-      .filter((i) => i.exactMatch || i.profileSite)
+      .filter((i) => i.exactMatch)
       .sort(
         (a, b) =>
           Number(b.exactMatch) - Number(a.exactMatch) ||
@@ -438,4 +431,4 @@ async function searchPhoneNumber(phoneNumber) {
 module.exports = {
   searchPhoneNumber
 };
-        
+      
