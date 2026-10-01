@@ -1,66 +1,61 @@
 const API_BASE = "https://phonelens-2.onrender.com";
 
 document.addEventListener("DOMContentLoaded", () => {
-  const input =
-    document.querySelector("#phoneInput") ||
-    document.querySelector("#phone") ||
-    document.querySelector('input[type="tel"]') ||
-    document.querySelector('input[type="text"]');
+  const form = document.getElementById("searchForm");
+  const input = document.getElementById("phoneInput");
+  const clearBtn = document.getElementById("clearBtn");
 
-  const button =
-    document.querySelector("#searchButton") ||
-    document.querySelector("#searchBtn") ||
-    [...document.querySelectorAll("button")].find(btn =>
-      btn.textContent.trim().toLowerCase().includes("search number")
+  const buttonText = document.getElementById("buttonText");
+  const loader = document.getElementById("loader");
+
+  const errorBox = document.getElementById("error");
+
+  const resultSection =
+    document.getElementById("resultSection");
+
+  const resultNumber =
+    document.getElementById("resultNumber");
+
+  const resultList =
+    document.getElementById("resultList");
+
+  if (
+    !form ||
+    !input ||
+    !buttonText ||
+    !loader ||
+    !errorBox ||
+    !resultSection ||
+    !resultNumber ||
+    !resultList
+  ) {
+    console.error(
+      "PhoneLens: Required HTML elements were not found."
     );
-
-  if (!input || !button) {
-    console.error("PhoneLens: input or search button not found.");
     return;
   }
 
   /*
-   * Find the ORIGINAL result area.
-   * We intentionally support multiple possible IDs/classes.
+   * Clear button
    */
-  let resultsContainer =
-    document.querySelector("#results") ||
-    document.querySelector("#result") ||
-    document.querySelector("#lookupResult") ||
-    document.querySelector("#searchResult") ||
-    document.querySelector(".results") ||
-    document.querySelector(".result");
+  clearBtn?.addEventListener("click", () => {
+    input.value = "";
+    input.focus();
 
-  /*
-   * If the existing HTML doesn't have a result container,
-   * create one after the search area.
-   */
-  if (!resultsContainer) {
-    resultsContainer = document.createElement("div");
-    resultsContainer.id = "results";
+    errorBox.textContent = "";
+    errorBox.classList.add("hidden");
 
-    const parent =
-      button.closest("section") ||
-      button.closest("main") ||
-      button.parentElement;
-
-    if (parent) {
-      parent.appendChild(resultsContainer);
-    } else {
-      document.body.appendChild(resultsContainer);
-    }
-  }
-
-  button.addEventListener("click", searchNumber);
-
-  input.addEventListener("keydown", event => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      searchNumber();
-    }
+    resultSection.classList.add("hidden");
+    resultList.innerHTML = "";
+    resultNumber.textContent = "—";
   });
 
-  async function searchNumber() {
+  /*
+   * Search form
+   */
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
     const phone = input.value.trim();
 
     if (!phone) {
@@ -68,24 +63,19 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    button.disabled = true;
-    button.textContent = "Searching...";
+    hideError();
 
-    resultsContainer.innerHTML = `
-      <div class="pl-loading">
-        <div class="pl-spinner"></div>
-        <strong>Searching PhoneLens...</strong>
-        <small>
-          Checking phone metadata and public web results
-        </small>
-      </div>
-    `;
+    setLoading(true);
+
+    resultSection.classList.add("hidden");
+    resultList.innerHTML = "";
+    resultNumber.textContent = "—";
 
     try {
       const url =
         `${API_BASE}/api/search?phone=${encodeURIComponent(phone)}`;
 
-      console.log("PhoneLens API:", url);
+      console.log("PhoneLens request:", url);
 
       const response = await fetch(url, {
         method: "GET",
@@ -94,22 +84,32 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
 
-      const rawText = await response.text();
+      const text = await response.text();
 
-      console.log("PhoneLens HTTP status:", response.status);
-      console.log("PhoneLens raw response:", rawText);
+      console.log(
+        "PhoneLens response status:",
+        response.status
+      );
+
+      console.log(
+        "PhoneLens raw response:",
+        text
+      );
 
       let data;
 
       try {
-        data = JSON.parse(rawText);
-      } catch {
+        data = JSON.parse(text);
+      } catch (jsonError) {
         throw new Error(
-          "API returned an invalid response. Check the backend."
+          "PhoneLens API returned an invalid response."
         );
       }
 
-      console.log("PhoneLens parsed response:", data);
+      console.log(
+        "PhoneLens parsed data:",
+        data
+      );
 
       if (!response.ok) {
         throw new Error(
@@ -125,40 +125,52 @@ document.addEventListener("DOMContentLoaded", () => {
         );
       }
 
-      renderResults(data);
+      renderResult(data);
 
     } catch (error) {
-      console.error("PhoneLens search error:", error);
+      console.error(
+        "PhoneLens search error:",
+        error
+      );
 
       showError(
         error.message ||
         "Unable to connect to PhoneLens API."
       );
+
     } finally {
-      button.disabled = false;
-      button.textContent = "Search Number";
+      setLoading(false);
+    }
+  });
+
+  /*
+   * Loading state
+   */
+  function setLoading(isLoading) {
+    const searchButton =
+      form.querySelector(".search-btn");
+
+    if (searchButton) {
+      searchButton.disabled = isLoading;
+    }
+
+    if (isLoading) {
+      buttonText.textContent = "Searching...";
+      loader.classList.remove("hidden");
+    } else {
+      buttonText.textContent = "Search Number";
+      loader.classList.add("hidden");
     }
   }
 
-  function renderResults(response) {
-    /*
-     * Backend structure:
-     *
-     * {
-     *   success: true,
-     *   phoneNumber: "...",
-     *   searchedNumber: "...",
-     *   normalizedNumber: "...",
-     *   results: [],
-     *   data: {},
-     *   publicWeb: {}
-     * }
-     */
-
+  /*
+   * Render complete API result
+   */
+  function renderResult(data) {
     const info =
-      response.data &&
-      typeof response.data === "object"
-        ? response.data
+      data.data &&
+      typeof data.data === "object"
+        ? data.data
         : {};
 
     const components =
@@ -173,219 +185,210 @@ document.addEventListener("DOMContentLoaded", () => {
         ? info.formats
         : {};
 
-    const publicWeb =
-      response.publicWeb &&
-      typeof response.publicWeb === "object"
-        ? response.publicWeb
-        : {};
+    /*
+     * Backend returns:
+     *
+     * phoneNumber
+     * searchedNumber
+     * normalizedNumber
+     */
+    const phoneNumber =
+      data.phoneNumber ||
+      data.normalizedNumber ||
+      data.searchedNumber ||
+      "—";
+
+    resultNumber.textContent =
+      phoneNumber;
 
     /*
-     * IMPORTANT:
-     * Backend definitely returns phoneNumber.
+     * Build information cards
      */
-    const displayedPhone =
-      response.phoneNumber ||
-      response.normalizedNumber ||
-      response.searchedNumber ||
-      "-";
+    let html = "";
 
-    resultsContainer.innerHTML = `
-      <div class="pl-result-wrapper">
+    html += card(
+      "VALIDITY",
+      info.valid === true
+        ? "Valid number"
+        : info.valid === false
+          ? "Invalid number"
+          : "Unknown"
+    );
 
-        <div class="pl-result-header">
-          <div>
-            <div class="pl-small-title">
-              SEARCH RESULT
-            </div>
+    html += card(
+      "POSSIBLE",
+      info.possible === true
+        ? "Number format is possible"
+        : info.possible === false
+          ? "Number format is not possible"
+          : "Unknown"
+    );
 
-            <h2>
-              Lookup Result
-            </h2>
-          </div>
+    html += card(
+      "COUNTRY",
+      info.country
+    );
 
-          <div class="pl-checked">
-            ✓ Checked
-          </div>
-        </div>
+    html += card(
+      "COUNTRY CODE",
+      info.countryCode
+        ? `+${info.countryCode}`
+        : null
+    );
 
-        <div class="pl-phone-card">
-          <span>PHONE NUMBER</span>
+    html += card(
+      "CARRIER",
+      info.carrier
+    );
 
-          <strong>
-            ${escapeHTML(displayedPhone)}
-          </strong>
-        </div>
+    html += card(
+      "LINE TYPE",
+      info.type
+    );
 
-        <div class="pl-grid">
+    html += card(
+      "GEOGRAPHIC REGION",
+      info.location
+    );
 
-          ${card(
-            "VALIDITY",
-            info.valid === true
-              ? "Valid number"
-              : info.valid === false
-                ? "Invalid number"
-                : "Unknown"
-          )}
+    html += card(
+      "TIMEZONE",
+      info.timezone
+    );
 
-          ${card(
-            "POSSIBLE",
-            info.possible === true
-              ? "Number format is possible"
-              : info.possible === false
-                ? "Number format is not possible"
-                : "Unknown"
-          )}
+    html += card(
+      "AREA CODE",
+      components.areaCode
+    );
 
-          ${card("COUNTRY", info.country)}
+    html += card(
+      "LOCAL NUMBER",
+      components.localNumber
+    );
 
-          ${card(
-            "COUNTRY CODE",
-            info.countryCode
-              ? `+${info.countryCode}`
-              : null
-          )}
+    html += card(
+      "EXTENSION",
+      components.extension
+    );
 
-          ${card(
-            "CARRIER",
-            info.carrier
-          )}
+    html += card(
+      "INTERNATIONAL FORMAT",
+      formats.international
+    );
 
-          ${card(
-            "LINE TYPE",
-            info.type
-          )}
+    html += card(
+      "NATIONAL FORMAT",
+      formats.national
+    );
 
-          ${card(
-            "GEOGRAPHIC REGION",
-            info.location
-          )}
+    html += card(
+      "E.164 FORMAT",
+      formats.e164
+    );
 
-          ${card(
-            "TIMEZONE",
-            info.timezone
-          )}
+    html += card(
+      "SANITIZED NUMBER",
+      info.sanitized
+    );
 
-          ${card(
-            "AREA CODE",
-            components.areaCode
-          )}
+    if (
+      Array.isArray(info.possibleTypes) &&
+      info.possibleTypes.length
+    ) {
+      html += card(
+        "POSSIBLE NUMBER TYPES",
+        info.possibleTypes.join(", ")
+      );
+    }
 
-          ${card(
-            "LOCAL NUMBER",
-            components.localNumber
-          )}
+    /*
+     * Public web results
+     */
+    html += renderPublicWeb(
+      data.publicWeb
+    );
 
-          ${card(
-            "EXTENSION",
-            components.extension
-          )}
+    resultList.innerHTML = html;
 
-          ${card(
-            "INTERNATIONAL FORMAT",
-            formats.international
-          )}
+    resultSection.classList.remove("hidden");
 
-          ${card(
-            "NATIONAL FORMAT",
-            formats.national
-          )}
-
-          ${card(
-            "E.164 FORMAT",
-            formats.e164
-          )}
-
-          ${card(
-            "SANITIZED NUMBER",
-            info.sanitized
-          )}
-
-          ${card(
-            "POSSIBLE NUMBER TYPES",
-            Array.isArray(info.possibleTypes)
-              ? info.possibleTypes.join(", ")
-              : null
-          )}
-
-        </div>
-
-        ${renderPublicWeb(publicWeb)}
-
-        <div class="pl-privacy">
-          <strong>
-            Privacy notice
-          </strong>
-
-          <p>
-            PhoneLens displays information returned by
-            its configured public-data services. It does not
-            provide private account credentials, OTPs,
-            passwords, or live private location data.
-          </p>
-        </div>
-
-      </div>
-    `;
-
-    injectStyles();
+    resultSection.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
   }
 
-  function renderPublicWeb(publicWeb) {
-    const webResults =
-      Array.isArray(publicWeb.results)
-        ? publicWeb.results
-        : [];
-
-    if (webResults.length === 0) {
-      return `
-        <section class="pl-web-section">
-
-          <div class="pl-web-header">
-
-            <div>
-              <div class="pl-small-title">
-                PUBLIC WEB
-              </div>
-
-              <h2>
-                Public Web Results
-              </h2>
-            </div>
-
-          </div>
-
-          <div class="pl-no-results">
-            No public web results were found.
-          </div>
-
-        </section>
-      `;
+  /*
+   * Information card
+   */
+  function card(label, value) {
+    if (
+      value === null ||
+      value === undefined ||
+      String(value).trim() === ""
+    ) {
+      return "";
     }
 
     return `
-      <section class="pl-web-section">
+      <div class="info-card">
+        <span>${escapeHTML(label)}</span>
+        <strong>${escapeHTML(String(value))}</strong>
+      </div>
+    `;
+  }
 
-        <div class="pl-web-header">
+  /*
+   * Public web / Tavily results
+   */
+  function renderPublicWeb(publicWeb) {
+    if (
+      !publicWeb ||
+      !Array.isArray(publicWeb.results) ||
+      publicWeb.results.length === 0
+    ) {
+      return `
+        <div class="web-results">
+          <div class="web-heading">
+            <span class="small-title">
+              PUBLIC WEB
+            </span>
 
-          <div>
-            <div class="pl-small-title">
-              TAVILY SEARCH
-            </div>
-
-            <h2>
+            <h3>
               Public Web Results
-            </h2>
+            </h3>
           </div>
 
-          <div class="pl-result-count">
-            ${webResults.length} results
+          <div class="web-empty">
+            No public web results were found.
           </div>
+        </div>
+      `;
+    }
 
+    const results =
+      publicWeb.results;
+
+    return `
+      <div class="web-results">
+
+        <div class="web-heading">
+          <span class="small-title">
+            TAVILY SEARCH
+          </span>
+
+          <h3>
+            Public Web Results
+          </h3>
+
+          <span class="web-count">
+            ${results.length} results
+          </span>
         </div>
 
-        <div class="pl-web-list">
+        <div class="web-list">
 
-          ${webResults.map((item, index) => {
+          ${results.map((item, index) => {
 
             const title =
               item.title ||
@@ -415,19 +418,19 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             return `
-              <article class="pl-web-card">
+              <article class="web-card">
 
-                <div class="pl-web-number">
+                <div class="web-index">
                   ${index + 1}
                 </div>
 
-                <div class="pl-web-content">
+                <div class="web-content">
 
-                  <h3>
+                  <h4>
                     ${escapeHTML(title)}
-                  </h3>
+                  </h4>
 
-                  <div class="pl-domain">
+                  <div class="web-domain">
                     ${escapeHTML(domain)}
                   </div>
 
@@ -435,12 +438,12 @@ document.addEventListener("DOMContentLoaded", () => {
                     ${escapeHTML(snippet)}
                   </p>
 
-                  <div class="pl-web-bottom">
+                  <div class="web-bottom">
 
                     ${
                       score !== null
                         ? `
-                          <span class="pl-score">
+                          <span class="web-score">
                             Relevance ${score}%
                           </span>
                         `
@@ -454,7 +457,6 @@ document.addEventListener("DOMContentLoaded", () => {
                             href="${escapeAttribute(url)}"
                             target="_blank"
                             rel="noopener noreferrer"
-                            class="pl-open-btn"
                           >
                             Open Result ↗
                           </a>
@@ -472,52 +474,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
         </div>
 
-      </section>
-    `;
-  }
-
-  function card(label, value) {
-    if (
-      value === null ||
-      value === undefined ||
-      String(value).trim() === ""
-    ) {
-      return "";
-    }
-
-    return `
-      <div class="pl-info-card">
-
-        <span>
-          ${escapeHTML(label)}
-        </span>
-
-        <strong>
-          ${escapeHTML(String(value))}
-        </strong>
-
       </div>
     `;
   }
 
+  /*
+   * Error
+   */
   function showError(message) {
-    resultsContainer.innerHTML = `
-      <div class="pl-error">
+    errorBox.textContent =
+      message || "Something went wrong.";
 
-        <strong>
-          Search failed
-        </strong>
-
-        <p>
-          ${escapeHTML(message)}
-        </p>
-
-      </div>
-    `;
-
-    injectStyles();
+    errorBox.classList.remove("hidden");
   }
 
+  function hideError() {
+    errorBox.textContent = "";
+    errorBox.classList.add("hidden");
+  }
+
+  /*
+   * Safe HTML output
+   */
   function escapeHTML(value) {
     return String(value)
       .replace(/&/g, "&amp;")
@@ -530,277 +508,4 @@ document.addEventListener("DOMContentLoaded", () => {
   function escapeAttribute(value) {
     return escapeHTML(value);
   }
-
-  function injectStyles() {
-    if (
-      document.querySelector("#phonelens-web-styles")
-    ) {
-      return;
-    }
-
-    const style =
-      document.createElement("style");
-
-    style.id =
-      "phonelens-web-styles";
-
-    style.textContent = `
-      .pl-result-wrapper {
-        width: 100%;
-      }
-
-      .pl-result-header,
-      .pl-web-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 15px;
-        margin-bottom: 20px;
-      }
-
-      .pl-small-title {
-        font-size: 12px;
-        letter-spacing: 2px;
-        font-weight: 700;
-        opacity: .6;
-        margin-bottom: 6px;
-      }
-
-      .pl-result-header h2,
-      .pl-web-header h2 {
-        margin: 0;
-      }
-
-      .pl-checked {
-        color: #62e6a7;
-        font-weight: 700;
-        white-space: nowrap;
-      }
-
-      .pl-phone-card,
-      .pl-info-card,
-      .pl-web-card,
-      .pl-privacy,
-      .pl-no-results,
-      .pl-error {
-        box-sizing: border-box;
-        border-radius: 20px;
-        margin-bottom: 16px;
-      }
-
-      .pl-phone-card {
-        padding: 25px;
-        background: rgba(8, 13, 28, .9);
-        border: 1px solid rgba(255,255,255,.08);
-      }
-
-      .pl-phone-card span,
-      .pl-info-card span {
-        display: block;
-        font-size: 12px;
-        letter-spacing: 1.5px;
-        opacity: .55;
-        margin-bottom: 8px;
-      }
-
-      .pl-phone-card strong {
-        display: block;
-        font-size: 25px;
-        word-break: break-word;
-      }
-
-      .pl-grid {
-        display: grid;
-        grid-template-columns:
-          repeat(2, minmax(0, 1fr));
-        gap: 14px;
-      }
-
-      .pl-info-card {
-        padding: 20px;
-        background: rgba(18, 31, 66, .75);
-        border: 1px solid rgba(75, 125, 255, .18);
-      }
-
-      .pl-info-card strong {
-        font-size: 17px;
-        word-break: break-word;
-      }
-
-      .pl-web-section {
-        margin-top: 35px;
-      }
-
-      .pl-result-count {
-        padding: 7px 12px;
-        border-radius: 20px;
-        background: rgba(100, 90, 255, .15);
-        font-size: 13px;
-        white-space: nowrap;
-      }
-
-      .pl-web-list {
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-      }
-
-      .pl-web-card {
-        display: flex;
-        gap: 15px;
-        padding: 20px;
-        background: rgba(8, 13, 28, .95);
-        border: 1px solid rgba(255,255,255,.08);
-      }
-
-      .pl-web-number {
-        min-width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(95, 80, 255, .2);
-        font-weight: 700;
-      }
-
-      .pl-web-content {
-        min-width: 0;
-        flex: 1;
-      }
-
-      .pl-web-content h3 {
-        margin: 0 0 6px;
-        font-size: 17px;
-        line-height: 1.35;
-      }
-
-      .pl-domain {
-        font-size: 12px;
-        opacity: .55;
-        margin-bottom: 10px;
-        word-break: break-all;
-      }
-
-      .pl-web-content p {
-        margin: 0 0 15px;
-        opacity: .78;
-        line-height: 1.5;
-        font-size: 14px;
-      }
-
-      .pl-web-bottom {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-      }
-
-      .pl-score {
-        font-size: 12px;
-        opacity: .7;
-      }
-
-      .pl-open-btn {
-        display: inline-block;
-        padding: 9px 14px;
-        border-radius: 10px;
-        text-decoration: none;
-        background: linear-gradient(
-          90deg,
-          #315ff5,
-          #7b3ff2
-        );
-        color: white;
-        font-size: 13px;
-        font-weight: 700;
-      }
-
-      .pl-open-btn:hover {
-        opacity: .9;
-      }
-
-      .pl-privacy {
-        margin-top: 25px;
-        padding: 18px;
-        background: rgba(80, 55, 10, .2);
-        border: 1px solid rgba(220, 170, 40, .2);
-      }
-
-      .pl-privacy strong {
-        color: #ffd43b;
-      }
-
-      .pl-privacy p {
-        margin-bottom: 0;
-        opacity: .7;
-        line-height: 1.5;
-      }
-
-      .pl-no-results,
-      .pl-error {
-        padding: 22px;
-        background: rgba(8, 13, 28, .9);
-        border: 1px solid rgba(255,255,255,.08);
-      }
-
-      .pl-error {
-        border-color: rgba(255, 70, 70, .3);
-      }
-
-      .pl-loading {
-        padding: 35px 20px;
-        text-align: center;
-        background: rgba(8, 13, 28, .9);
-        border-radius: 20px;
-      }
-
-      .pl-loading small {
-        display: block;
-        margin-top: 8px;
-        opacity: .55;
-      }
-
-      .pl-spinner {
-        width: 28px;
-        height: 28px;
-        margin: 0 auto 15px;
-        border: 3px solid rgba(255,255,255,.15);
-        border-top-color: white;
-        border-radius: 50%;
-        animation: pl-spin .8s linear infinite;
-      }
-
-      @keyframes pl-spin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
-
-      @media (max-width: 600px) {
-
-        .pl-grid {
-          grid-template-columns: 1fr;
-        }
-
-        .pl-result-header,
-        .pl-web-header {
-          align-items: flex-start;
-        }
-
-        .pl-web-card {
-          padding: 16px;
-        }
-
-        .pl-phone-card strong {
-          font-size: 21px;
-        }
-      }
-    `;
-
-    document.head.appendChild(style);
-  }
-
-  injectStyles();
 });
