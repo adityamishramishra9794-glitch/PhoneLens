@@ -3,6 +3,9 @@ const https = require("https");
 const PHONE_API =
   "https://libphonenumberapi.com/api/phone-numbers/";
 
+const TAVILY_API_KEY =
+  process.env.TAVILY_API_KEY;
+
 function normalizePhone(input) {
   let value = String(input || "").trim();
 
@@ -14,7 +17,6 @@ function normalizePhone(input) {
 
   const digits = value.replace(/\D/g, "");
 
-  // India default for 10-digit numbers
   if (digits.length === 10) {
     return "+91" + digits;
   }
@@ -22,29 +24,28 @@ function normalizePhone(input) {
   return digits;
 }
 
-function getJSON(url, timeout = 10000) {
+function requestJSON(url, options = {}, timeout = 15000) {
   return new Promise((resolve, reject) => {
-    const request = https.get(
+    const req = https.request(
       url,
       {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "PhoneLens/1.0"
-        }
+        method: options.method || "GET",
+        headers: options.headers || {}
       },
-      (response) => {
+      (res) => {
         let body = "";
 
-        response.on("data", (chunk) => {
+        res.on("data", (chunk) => {
           body += chunk;
         });
 
-        response.on("end", () => {
-          if (response.statusCode < 200 || response.statusCode >= 300) {
-            reject(
-              new Error(`HTTP ${response.statusCode}`)
+        res.on("end", () => {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            return reject(
+              new Error(
+                `HTTP ${res.statusCode}: ${body.slice(0, 300)}`
+              )
             );
-            return;
           }
 
           try {
@@ -56,11 +57,17 @@ function getJSON(url, timeout = 10000) {
       }
     );
 
-    request.setTimeout(timeout, () => {
-      request.destroy(new Error("Request timeout"));
+    req.setTimeout(timeout, () => {
+      req.destroy(new Error("Request timeout"));
     });
 
-    request.on("error", reject);
+    req.on("error", reject);
+
+    if (options.body) {
+      req.write(options.body);
+    }
+
+    req.end();
   });
 }
 
@@ -80,76 +87,152 @@ function addResult(results, type, value) {
 }
 
 /*
- * Public-web links.
- *
- * These are search links, not scraped private databases.
- * The user can open the search result and inspect the
- * publicly indexed page themselves.
+ * Phone metadata
  */
-function buildPublicSearches(phone, normalized) {
-  const searches = [];
+async function getPhoneMetadata(normalized) {
+  try {
+    const url =
+      PHONE_API +
+      encodeURIComponent(normalized);
 
-  const clean = String(phone || "")
-    .replace(/[^\d]/g, "");
-
-  const normalizedClean = String(normalized || "")
-    .replace(/[^\d]/g, "");
-
-  if (clean) {
-    searches.push({
-      title: "Google Search",
-      engine: "Google",
-      url:
-        "https://www.google.com/search?q=" +
-        encodeURIComponent('"' + clean + '"')
+    return await requestJSON(url, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "PhoneLens/1.0"
+      }
     });
+  } catch (error) {
+    console.error(
+      "Phone metadata error:",
+      error.message
+    );
 
-    searches.push({
-      title: "Bing Search",
-      engine: "Bing",
-      url:
-        "https://www.bing.com/search?q=" +
-        encodeURIComponent('"' + clean + '"')
-    });
+    return {};
+  }
+}
+
+/*
+ * Tavily public web search
+ */
+async function searchPublicWeb(phoneNumber, normalized) {
+  if (!TAVILY_API_KEY) {
+    console.error(
+      "TAVILY_API_KEY is not configured."
+    );
+
+    return {
+      enabled: false,
+      results: []
+    };
+  }
+
+  const cleanNumber = String(phoneNumber || "")
+    .replace(/[^\d+]/g, "");
+
+  const normalizedNumber = String(normalized || "")
+    .replace(/[^\d+]/g, "");
+
+  /*
+   * Search public web pages containing the number.
+   * We keep the query focused on the number itself.
+   */
+  const queryParts = [];
+
+  if (cleanNumber) {
+    queryParts.push(`"${cleanNumber}"`);
   }
 
   if (
-    normalizedClean &&
-    normalizedClean !== clean
+    normalizedNumber &&
+    normalizedNumber !== cleanNumber
   ) {
-    searches.push({
-      title: "Google International Search",
-      engine: "Google",
-      url:
-        "https://www.google.com/search?q=" +
-        encodeURIComponent('"' + normalizedClean + '"')
-    });
+    queryParts.push(`"${normalizedNumber}"`);
   }
 
-  return searches;
-}
-
-async function searchPhoneNumber(phoneNumber) {
-  const normalized = normalizePhone(phoneNumber);
-
-  if (!normalized) {
-    throw new Error("Phone number is required");
-  }
-
-  const apiURL =
-    PHONE_API +
-    encodeURIComponent(normalized);
-
-  let apiData = {};
+  const query = queryParts.join(" OR ");
 
   try {
-    apiData = await getJSON(apiURL);
+    const body = JSON.stringify({
+      query,
+      search_depth: "basic",
+      topic: "general",
+      max_results: 8,
+      include_answer: false,
+      include_raw_content: false
+    });
+
+    const response = await requestJSON(
+      "https://api.tavily.com/search",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization:
+            `Bearer ${TAVILY_API_KEY}`
+        },
+
+        body
+      },
+
+      15000
+    );
+
+    const results =
+      Array.isArray(response.results)
+        ? response.results
+        : [];
+
+    return {
+      enabled: true,
+
+      results: results.map((item) => ({
+        title: item.title || "Public Web Result",
+
+        url: item.url || "",
+
+        snippet:
+          item.content ||
+          item.snippet ||
+          "",
+
+        score:
+          typeof item.score === "number"
+            ? item.score
+            : null
+      }))
+    };
+
   } catch (error) {
     console.error(
-      "Phone metadata API error:",
+      "Tavily search error:",
       error.message
     );
+
+    return {
+      enabled: true,
+      results: [],
+      error: "Public web search temporarily unavailable."
+    };
   }
+}
+
+/*
+ * Main PhoneLens search
+ */
+async function searchPhoneNumber(phoneNumber) {
+  const normalized =
+    normalizePhone(phoneNumber);
+
+  if (!normalized) {
+    throw new Error(
+      "Phone number is required"
+    );
+  }
+
+  const apiData =
+    await getPhoneMetadata(normalized);
 
   const components =
     apiData.components || {};
@@ -242,20 +325,43 @@ async function searchPhoneNumber(phoneNumber) {
         : null
   );
 
-  addResult(results, "Country", data.country);
+  addResult(
+    results,
+    "Country",
+    data.country
+  );
 
   addResult(
     results,
     "Country Code",
     data.countryCode
-      ? "+" + data.countryCode
+      ? `+${data.countryCode}`
       : null
   );
 
-  addResult(results, "Carrier", data.carrier);
-  addResult(results, "Line Type", data.type);
-  addResult(results, "Geographic Region", data.location);
-  addResult(results, "Timezone", data.timezone);
+  addResult(
+    results,
+    "Carrier",
+    data.carrier
+  );
+
+  addResult(
+    results,
+    "Line Type",
+    data.type
+  );
+
+  addResult(
+    results,
+    "Geographic Region",
+    data.location
+  );
+
+  addResult(
+    results,
+    "Timezone",
+    data.timezone
+  );
 
   addResult(
     results,
@@ -287,7 +393,13 @@ async function searchPhoneNumber(phoneNumber) {
     data.formats.e164
   );
 
-  if (data.possibleTypes.length) {
+  addResult(
+    results,
+    "Sanitized Number",
+    data.sanitized
+  );
+
+  if (data.possibleTypes.length > 0) {
     addResult(
       results,
       "Possible Types",
@@ -296,10 +408,10 @@ async function searchPhoneNumber(phoneNumber) {
   }
 
   /*
-   * Public search links
+   * Actual public web results
    */
-  const publicSearches =
-    buildPublicSearches(
+  const publicWeb =
+    await searchPublicWeb(
       phoneNumber,
       normalized
     );
@@ -316,15 +428,9 @@ async function searchPhoneNumber(phoneNumber) {
 
     data,
 
-    publicWeb: {
-      available: publicSearches.length > 0,
-      note:
-        "These links search publicly indexed web pages. " +
-        "PhoneLens does not access private or leaked databases.",
-      searches: publicSearches
-    },
+    publicWeb,
 
-    source: "libphonenumberapi",
+    source: "libphonenumberapi + Tavily",
 
     message:
       "Phone number lookup completed successfully."
