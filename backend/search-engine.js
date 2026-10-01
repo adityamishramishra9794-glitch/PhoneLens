@@ -1,11 +1,19 @@
 const https = require("https");
 
-const PHONE_API =
-  "https://libphonenumberapi.com/api/phone-numbers/";
+const PHONE_API = "https://libphonenumberapi.com/api/phone-numbers/";
+const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 
-const TAVILY_API_KEY =
-  process.env.TAVILY_API_KEY;
-
+const PROFILE_DOMAINS = [
+  "linkedin.com",
+  "facebook.com",
+  "instagram.com",
+  "twitter.com",
+  "x.com",
+  "justdial.com",
+  "indiamart.com",
+  "sulekha.com",
+  "github.com"
+];
 
 /* =========================
    PHONE NORMALIZATION
@@ -13,7 +21,6 @@ const TAVILY_API_KEY =
 
 function normalizePhone(input) {
   let value = String(input || "").trim();
-
   value = value.replace(/[^\d+]/g, "");
 
   if (value.startsWith("+")) {
@@ -28,7 +35,6 @@ function normalizePhone(input) {
 
   return digits;
 }
-
 
 /* =========================
    HTTP JSON REQUEST
@@ -52,27 +58,21 @@ function requestJSON(url, options = {}, timeout = 15000) {
         res.on("end", () => {
           if (res.statusCode < 200 || res.statusCode >= 300) {
             return reject(
-              new Error(
-                `HTTP ${res.statusCode}: ${body.slice(0, 300)}`
-              )
+              new Error(`HTTP ${res.statusCode}: ${body.slice(0, 300)}`)
             );
           }
 
           try {
             resolve(JSON.parse(body));
           } catch {
-            reject(
-              new Error("Invalid JSON response")
-            );
+            reject(new Error("Invalid JSON response"));
           }
         });
       }
     );
 
     req.setTimeout(timeout, () => {
-      req.destroy(
-        new Error("Request timeout")
-      );
+      req.destroy(new Error("Request timeout"));
     });
 
     req.on("error", reject);
@@ -84,7 +84,6 @@ function requestJSON(url, options = {}, timeout = 15000) {
     req.end();
   });
 }
-
 
 /* =========================
    RESULT HELPER
@@ -99,12 +98,8 @@ function addResult(results, type, value) {
     return;
   }
 
-  results.push({
-    type,
-    value: String(value)
-  });
+  results.push({ type, value: String(value) });
 }
-
 
 /* =========================
    PHONE METADATA
@@ -112,9 +107,7 @@ function addResult(results, type, value) {
 
 async function getPhoneMetadata(normalized) {
   try {
-    const url =
-      PHONE_API +
-      encodeURIComponent(normalized);
+    const url = PHONE_API + encodeURIComponent(normalized);
 
     return await requestJSON(url, {
       headers: {
@@ -123,15 +116,10 @@ async function getPhoneMetadata(normalized) {
       }
     });
   } catch (error) {
-    console.error(
-      "Phone metadata error:",
-      error.message
-    );
-
+    console.error("Phone metadata error:", error.message);
     return {};
   }
 }
-
 
 /* =========================
    NUMBER VARIANTS
@@ -140,63 +128,38 @@ async function getPhoneMetadata(normalized) {
 function getNumberVariants(phoneNumber, normalized) {
   const variants = new Set();
 
-  const original =
-    String(phoneNumber || "").trim();
+  const original = String(phoneNumber || "").trim();
+  const normalizedValue = String(normalized || "").trim();
+  const originalDigits = original.replace(/\D/g, "");
+  const normalizedDigits = normalizedValue.replace(/\D/g, "");
 
-  const normalizedValue =
-    String(normalized || "").trim();
-
-  const originalDigits =
-    original.replace(/\D/g, "");
-
-  const normalizedDigits =
-    normalizedValue.replace(/\D/g, "");
-
-  if (original) {
-    variants.add(original);
-  }
-
-  if (normalizedValue) {
-    variants.add(normalizedValue);
-  }
-
-  if (originalDigits) {
-    variants.add(originalDigits);
-  }
-
-  if (normalizedDigits) {
-    variants.add(normalizedDigits);
-  }
+  if (original) variants.add(original);
+  if (normalizedValue) variants.add(normalizedValue);
+  if (originalDigits) variants.add(originalDigits);
+  if (normalizedDigits) variants.add(normalizedDigits);
 
   // Indian 10-digit local format
   let indianLocal = "";
 
-  if (normalizedDigits.length === 12 &&
-      normalizedDigits.startsWith("91")) {
-    indianLocal =
-      normalizedDigits.slice(2);
+  if (normalizedDigits.length === 12 && normalizedDigits.startsWith("91")) {
+    indianLocal = normalizedDigits.slice(2);
   }
 
-  if (
-    originalDigits.length === 10
-  ) {
+  if (originalDigits.length === 10) {
     indianLocal = originalDigits;
   }
 
   if (indianLocal.length === 10) {
+    const a = indianLocal.slice(0, 5);
+    const b = indianLocal.slice(5);
+
     variants.add(indianLocal);
-
-    variants.add(
-      `+91 ${indianLocal.slice(0, 5)} ${indianLocal.slice(5)}`
-    );
-
-    variants.add(
-      `+91-${indianLocal.slice(0, 5)}-${indianLocal.slice(5)}`
-    );
-
-    variants.add(
-      `0${indianLocal}`
-    );
+    variants.add(`+91 ${a} ${b}`);
+    variants.add(`+91-${a}-${b}`);
+    variants.add(`+91${indianLocal}`);
+    variants.add(`${a} ${b}`);
+    variants.add(`${a}-${b}`);
+    variants.add(`0${indianLocal}`);
   }
 
   return {
@@ -207,19 +170,53 @@ function getNumberVariants(phoneNumber, normalized) {
   };
 }
 
+/* =========================
+   TAVILY HELPERS
+========================= */
+
+async function tavilySearch(query, extra = {}) {
+  const body = JSON.stringify({
+    query,
+    search_depth: "advanced",
+    topic: "general",
+    max_results: 10,
+    include_answer: false,
+    include_raw_content: true,
+    ...extra
+  });
+
+  const res = await requestJSON(
+    "https://api.tavily.com/search",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${TAVILY_API_KEY}`
+      },
+      body
+    },
+    25000
+  );
+
+  return Array.isArray(res.results) ? res.results : [];
+}
+
+function digitsOnly(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function isProfileSite(url) {
+  return PROFILE_DOMAINS.some((d) => String(url || "").includes(d));
+}
 
 /* =========================
    PUBLIC WEB SEARCH
 ========================= */
 
-async function searchPublicWeb(
-  phoneNumber,
-  normalized
-) {
+async function searchPublicWeb(phoneNumber, normalized) {
   if (!TAVILY_API_KEY) {
-    console.error(
-      "TAVILY_API_KEY is not configured."
-    );
+    console.error("TAVILY_API_KEY is not configured.");
 
     return {
       enabled: false,
@@ -228,346 +225,159 @@ async function searchPublicWeb(
     };
   }
 
-  const numberInfo =
-    getNumberVariants(
-      phoneNumber,
-      normalized
-    );
+  const numberInfo = getNumberVariants(phoneNumber, normalized);
+  const { variants, originalDigits, normalizedDigits, indianLocal } =
+    numberInfo;
 
-  const {
-    originalDigits,
-    normalizedDigits,
-    indianLocal
-  } = numberInfo;
+  function containsPhoneNumber(text) {
+    const digits = digitsOnly(text);
+    if (!digits) return false;
 
-  /*
-   * Use the strongest exact number forms
-   * for the Tavily query.
-   */
-  const searchParts = [];
+    if (normalizedDigits.length >= 10 && digits.includes(normalizedDigits)) {
+      return true;
+    }
 
-  if (originalDigits.length >= 7) {
-    searchParts.push(
-      `"${originalDigits}"`
-    );
+    if (originalDigits.length >= 10 && digits.includes(originalDigits)) {
+      return true;
+    }
+
+    if (indianLocal.length === 10 && digits.includes(indianLocal)) {
+      return true;
+    }
+
+    return false;
   }
 
-  if (
-    normalizedDigits.length >= 7 &&
-    normalizedDigits !== originalDigits
-  ) {
-    searchParts.push(
-      `"${normalizedDigits}"`
-    );
-  }
+  // Formatted variants (spaces / dashes) are what web pages actually use
+  const exactQueries = variants
+    .filter((v) => digitsOnly(v).length >= 10)
+    .slice(0, 5)
+    .map((v) => `"${v}"`);
 
-  if (
-    indianLocal &&
-    indianLocal.length === 10
-  ) {
-    searchParts.push(
-      `"${indianLocal}"`
-    );
+  if (exactQueries.length === 0) {
+    return { enabled: true, results: [] };
   }
-
-  if (searchParts.length === 0) {
-    return {
-      enabled: true,
-      results: []
-    };
-  }
-
-  const query =
-    searchParts.join(" OR ");
 
   try {
-    const body = JSON.stringify({
-      query,
+    const jobs = [
+      // each variant searched separately
+      ...exactQueries.map((q) => tavilySearch(q)),
 
-      search_depth: "basic",
+      // targeted search on profile sites
+      tavilySearch(`${indianLocal || normalizedDigits} contact profile`, {
+        include_domains: PROFILE_DOMAINS
+      })
+    ];
 
-      topic: "general",
+    const settled = await Promise.allSettled(jobs);
 
-      max_results: 10,
+    const seen = new Set();
+    const merged = [];
 
-      include_answer: false,
+    for (const s of settled) {
+      if (s.status !== "fulfilled") {
+        console.error("Tavily job failed:", s.reason && s.reason.message);
+        continue;
+      }
 
-      include_raw_content: false
-    });
-
-    const response =
-      await requestJSON(
-        "https://api.tavily.com/search",
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-
-            Accept:
-              "application/json",
-
-            Authorization:
-              `Bearer ${TAVILY_API_KEY}`
-          },
-
-          body
-        },
-
-        15000
-      );
-
-    const rawResults =
-      Array.isArray(response.results)
-        ? response.results
-        : [];
-
-
-    /*
-     * Convert any text into digits.
-     *
-     * Example:
-     * +91 97945 09596
-     * becomes:
-     * 919794509596
-     */
-    function digitsOnly(value) {
-      return String(value || "")
-        .replace(/\D/g, "");
+      for (const item of s.value) {
+        if (!item.url || seen.has(item.url)) continue;
+        seen.add(item.url);
+        merged.push(item);
+      }
     }
 
+    const filtered = merged
+      .map((item) => {
+        const title = item.title || "";
+        const url = item.url || "";
+        const content = item.content || item.snippet || "";
+        const raw = item.raw_content || "";
 
-    /*
-     * Check whether the actual searched
-     * number appears in the result.
-     */
-    function containsPhoneNumber(text) {
-      const digits =
-        digitsOnly(text);
+        const exactMatch = containsPhoneNumber(
+          `${title} ${url} ${content} ${raw}`
+        );
 
-      if (!digits) {
-        return false;
-      }
+        return {
+          title: title || "Public Web Result",
+          url,
+          snippet: content,
+          score: typeof item.score === "number" ? item.score : null,
+          exactMatch,
+          profileSite: isProfileSite(url),
+          // exact number found = high, profile site only = low
+          confidence: exactMatch ? "high" : "low"
+        };
+      })
+      .filter((i) => i.exactMatch || i.profileSite)
+      .sort(
+        (a, b) =>
+          Number(b.exactMatch) - Number(a.exactMatch) ||
+          (b.score || 0) - (a.score || 0)
+      )
+      .slice(0, 10);
 
-      /*
-       * Full international number.
-       */
-      if (
-        normalizedDigits.length >= 10 &&
-        digits.includes(normalizedDigits)
-      ) {
-        return true;
-      }
-
-      /*
-       * Original local number.
-       */
-      if (
-        originalDigits.length >= 10 &&
-        digits.includes(originalDigits)
-      ) {
-        return true;
-      }
-
-      /*
-       * Indian local number.
-       */
-      if (
-        indianLocal.length === 10 &&
-        digits.includes(indianLocal)
-      ) {
-        return true;
-      }
-
-      return false;
-    }
-
-
-    /*
-     * Keep only genuinely relevant results.
-     */
-    const filtered =
-      rawResults
-        .map((item) => {
-          const title =
-            item.title || "";
-
-          const url =
-            item.url || "";
-
-          const content =
-            item.content ||
-            item.snippet ||
-            "";
-
-          const searchableText =
-            `${title} ${url} ${content}`;
-
-          const exactMatch =
-            containsPhoneNumber(
-              searchableText
-            );
-
-          return {
-            title,
-            url,
-            snippet: content,
-
-            score:
-              typeof item.score === "number"
-                ? item.score
-                : null,
-
-            exactMatch
-          };
-        })
-        .filter(
-          (item) => item.exactMatch
-        )
-        .slice(0, 8)
-        .map((item) => ({
-          title:
-            item.title ||
-            "Public Web Result",
-
-          url:
-            item.url || "",
-
-          snippet:
-            item.snippet || "",
-
-          score:
-            item.score
-        }));
-
-
-    return {
-      enabled: true,
-
-      results: filtered
-    };
-
+    return { enabled: true, results: filtered };
   } catch (error) {
-    /*
-     * IMPORTANT:
-     * Tavily failure must NOT break
-     * the main phone lookup.
-     */
-    console.error(
-      "Tavily search error:",
-      error.message
-    );
+    // Tavily failure must NOT break the main phone lookup
+    console.error("Tavily search error:", error.message);
 
     return {
       enabled: true,
-
       results: [],
-
-      error:
-        "Public web search temporarily unavailable."
+      error: "Public web search temporarily unavailable."
     };
   }
 }
-
 
 /* =========================
    MAIN PHONE SEARCH
 ========================= */
 
 async function searchPhoneNumber(phoneNumber) {
-  const normalized =
-    normalizePhone(phoneNumber);
+  const normalized = normalizePhone(phoneNumber);
 
   if (!normalized) {
-    throw new Error(
-      "Phone number is required"
-    );
+    throw new Error("Phone number is required");
   }
 
-  /*
-   * Phone metadata remains
-   * exactly as before.
-   */
-  const apiData =
-    await getPhoneMetadata(
-      normalized
-    );
+  const apiData = await getPhoneMetadata(normalized);
 
-  const components =
-    apiData.components || {};
-
-  const formats =
-    apiData.formats || {};
+  const components = apiData.components || {};
+  const formats = apiData.formats || {};
 
   const data = {
-    valid:
-      typeof apiData.is_valid === "boolean"
-        ? apiData.is_valid
-        : null,
-
+    valid: typeof apiData.is_valid === "boolean" ? apiData.is_valid : null,
     possible:
-      typeof apiData.is_possible === "boolean"
-        ? apiData.is_possible
-        : null,
-
-    country:
-      apiData.country ?? null,
-
-    countryCode:
-      components.country_code ?? null,
-
-    carrier:
-      apiData.carrier ?? null,
-
-    type:
-      apiData.type ?? null,
-
-    location:
-      apiData.geo_name ?? null,
-
-    timezone:
-      apiData.timezone ?? null,
+      typeof apiData.is_possible === "boolean" ? apiData.is_possible : null,
+    country: apiData.country ?? null,
+    countryCode: components.country_code ?? null,
+    carrier: apiData.carrier ?? null,
+    type: apiData.type ?? null,
+    location: apiData.geo_name ?? null,
+    timezone: apiData.timezone ?? null,
 
     components: {
-      areaCode:
-        components.area_code ?? null,
-
-      countryCode:
-        components.country_code ?? null,
-
-      extension:
-        components.extension ?? null,
-
-      localNumber:
-        components.local_number ?? null
+      areaCode: components.area_code ?? null,
+      countryCode: components.country_code ?? null,
+      extension: components.extension ?? null,
+      localNumber: components.local_number ?? null
     },
 
     formats: {
-      e164:
-        formats.e164 ?? null,
-
-      international:
-        formats.international ?? null,
-
-      national:
-        formats.national ?? null
+      e164: formats.e164 ?? null,
+      international: formats.international ?? null,
+      national: formats.national ?? null
     },
 
-    possibleTypes:
-      Array.isArray(
-        apiData.possible_types
-      )
-        ? apiData.possible_types
-        : [],
+    possibleTypes: Array.isArray(apiData.possible_types)
+      ? apiData.possible_types
+      : [],
 
-    sanitized:
-      apiData.sanitized ?? null
+    sanitized: apiData.sanitized ?? null
   };
 
-
   const results = [];
-
 
   addResult(
     results,
@@ -579,7 +389,6 @@ async function searchPhoneNumber(phoneNumber) {
         : null
   );
 
-
   addResult(
     results,
     "Possible",
@@ -590,139 +399,43 @@ async function searchPhoneNumber(phoneNumber) {
         : null
   );
 
-
-  addResult(
-    results,
-    "Country",
-    data.country
-  );
-
-
+  addResult(results, "Country", data.country);
   addResult(
     results,
     "Country Code",
-    data.countryCode
-      ? `+${data.countryCode}`
-      : null
+    data.countryCode ? `+${data.countryCode}` : null
   );
+  addResult(results, "Carrier", data.carrier);
+  addResult(results, "Line Type", data.type);
+  addResult(results, "Geographic Region", data.location);
+  addResult(results, "Timezone", data.timezone);
+  addResult(results, "Area Code", data.components.areaCode);
+  addResult(results, "Local Number", data.components.localNumber);
+  addResult(results, "International Format", data.formats.international);
+  addResult(results, "National Format", data.formats.national);
+  addResult(results, "E.164 Format", data.formats.e164);
+  addResult(results, "Sanitized Number", data.sanitized);
 
-
-  addResult(
-    results,
-    "Carrier",
-    data.carrier
-  );
-
-
-  addResult(
-    results,
-    "Line Type",
-    data.type
-  );
-
-
-  addResult(
-    results,
-    "Geographic Region",
-    data.location
-  );
-
-
-  addResult(
-    results,
-    "Timezone",
-    data.timezone
-  );
-
-
-  addResult(
-    results,
-    "Area Code",
-    data.components.areaCode
-  );
-
-
-  addResult(
-    results,
-    "Local Number",
-    data.components.localNumber
-  );
-
-
-  addResult(
-    results,
-    "International Format",
-    data.formats.international
-  );
-
-
-  addResult(
-    results,
-    "National Format",
-    data.formats.national
-  );
-
-
-  addResult(
-    results,
-    "E.164 Format",
-    data.formats.e164
-  );
-
-
-  addResult(
-    results,
-    "Sanitized Number",
-    data.sanitized
-  );
-
-
-  if (
-    data.possibleTypes.length > 0
-  ) {
-    addResult(
-      results,
-      "Possible Types",
-      data.possibleTypes.join(", ")
-    );
+  if (data.possibleTypes.length > 0) {
+    addResult(results, "Possible Types", data.possibleTypes.join(", "));
   }
 
-
-  /*
-   * Public web search is separate.
-   * Even if it fails, metadata works.
-   */
-  const publicWeb =
-    await searchPublicWeb(
-      phoneNumber,
-      normalized
-    );
-
+  // Public web search is separate; metadata works even if it fails
+  const publicWeb = await searchPublicWeb(phoneNumber, normalized);
 
   return {
     phoneNumber: normalized,
-
-    searchedNumber:
-      String(phoneNumber || ""),
-
-    normalizedNumber:
-      normalized,
-
+    searchedNumber: String(phoneNumber || ""),
+    normalizedNumber: normalized,
     results,
-
     data,
-
     publicWeb,
-
-    source:
-      "libphonenumberapi + Tavily",
-
-    message:
-      "Phone number lookup completed successfully."
+    source: "libphonenumberapi + Tavily",
+    message: "Phone number lookup completed successfully."
   };
 }
-
 
 module.exports = {
   searchPhoneNumber
 };
+        
