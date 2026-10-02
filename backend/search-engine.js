@@ -4,17 +4,35 @@ const { lookupSeries } = require("./indiaSeries");
 const PHONE_API = "https://libphonenumberapi.com/api/phone-numbers/";
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 
-const PROFILE_DOMAINS = [
-  "linkedin.com",
-  "facebook.com",
-  "instagram.com",
-  "twitter.com",
-  "x.com",
-  "justdial.com",
-  "indiamart.com",
-  "sulekha.com",
-  "github.com"
+/*
+ * Sites jahan number "mention" hota hai (listings, classifieds, job portals,
+ * public posts, blogs, spam reports). Sirf yahi check hota hai ki number
+ * page par likha hai ya nahi. Aur sites chahiye to bas yahan add kar de.
+ */
+const PUBLIC_SITES = [
+  // business directories
+  "justdial.com", "indiamart.com", "sulekha.com", "tradeindia.com",
+  "exportersindia.com", "yellowpages.in", "grotal.com", "tuugo.in",
+  "practo.com", "lybrate.com", "shiksha.com", "collegedunia.com",
+  // classifieds / property / vehicles
+  "olx.in", "quikr.com", "99acres.com", "magicbricks.com", "housing.com",
+  "nobroker.in", "cardekho.com", "carwale.com", "bikewale.com", "droom.in",
+  // jobs
+  "naukri.com", "indeed.com", "shine.com", "foundit.in", "timesjobs.com",
+  "workindia.in", "freshersworld.com",
+  // social / public posts
+  "facebook.com", "instagram.com", "twitter.com", "x.com", "linkedin.com",
+  "youtube.com", "reddit.com", "quora.com", "pinterest.com", "tumblr.com",
+  "t.me", "linktr.ee", "about.me",
+  // blogs / sites / docs
+  "medium.com", "wordpress.com", "blogspot.com", "wixsite.com",
+  "weebly.com", "github.com", "pastebin.com", "scribd.com",
+  "slideshare.net", "issuu.com", "behance.net",
+  // spam / scam reports
+  "tellows.in", "800notes.com", "shouldianswer.com", "whocallsme.com"
 ];
+
+const PROFILE_DOMAINS = PUBLIC_SITES;
 
 /* =========================
    PHONE NORMALIZATION
@@ -329,9 +347,25 @@ async function searchPublicWeb(phoneNumber, normalized) {
       `"+91 ${spaced}" mobile`
     ];
 
-    const jobs = [...exactQueries, ...contextQueries].map((q) =>
-      tavilySearch(q)
+    // site-scoped searches: number in sites ki list me mention hai ya nahi
+    const siteChunks = [];
+    for (let i = 0; i < PUBLIC_SITES.length; i += 20) {
+      siteChunks.push(PUBLIC_SITES.slice(i, i + 20));
+    }
+
+    const siteJobs = siteChunks.flatMap((domains) =>
+      [`"${spaced}"`, `"${base}"`].map((q) =>
+        tavilySearch(q, {
+          include_domains: domains,
+          search_depth: "basic"
+        })
+      )
     );
+
+    const jobs = [
+      ...[...exactQueries, ...contextQueries].map((q) => tavilySearch(q)),
+      ...siteJobs
+    ];
 
     const settled = await Promise.allSettled(jobs);
 
@@ -517,4 +551,4 @@ async function searchPhoneNumber(phoneNumber) {
 module.exports = {
   searchPhoneNumber
 };
-    
+                     
