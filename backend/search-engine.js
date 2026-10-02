@@ -1,4 +1,5 @@
 const https = require("https");
+const { lookupSeries } = require("./indiaSeries");
 
 const PHONE_API = "https://libphonenumberapi.com/api/phone-numbers/";
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
@@ -126,32 +127,9 @@ async function getPhoneMetadata(normalized) {
 ========================= */
 
 /*
- * Option 1 (free): local file indiaSeries.json in the same folder:
- * {
- *   "9582": { "operator": "Vodafone", "circle": "Delhi" },
- *   "6392": { "operator": "Jio", "circle": "UP East" }
- * }
- * Key = first 4 digits of the 10-digit number.
- * Data source: DoT numbering plan / Wikipedia "Mobile telephone
- * numbering in India" series table.
- *
- * Option 2 (accurate, paid): Exotel Number Metadata API.
- * Set EXOTEL_SID, EXOTEL_API_KEY, EXOTEL_API_TOKEN env vars.
+ * Circle lookup: built-in series table (free) + optional Exotel API.
+ * Exotel ke liye EXOTEL_SID, EXOTEL_API_KEY, EXOTEL_API_TOKEN env vars set kar.
  */
-
-let seriesTable = null;
-
-function loadSeriesTable() {
-  if (seriesTable !== null) return seriesTable;
-
-  try {
-    seriesTable = require("./indiaSeries.json");
-  } catch {
-    seriesTable = {};
-  }
-
-  return seriesTable;
-}
 
 async function getIndiaCircle(indianLocal) {
   if (!indianLocal || indianLocal.length !== 10) return null;
@@ -184,8 +162,8 @@ async function getIndiaCircle(indianLocal) {
     }
   }
 
-  // Local series table
-  const entry = loadSeriesTable()[indianLocal.slice(0, 4)];
+  // Local series table (indiaSeries.js)
+  const entry = lookupSeries(indianLocal);
 
   if (entry) {
     return {
@@ -539,4 +517,4 @@ async function searchPhoneNumber(phoneNumber) {
 module.exports = {
   searchPhoneNumber
 };
-              
+    
