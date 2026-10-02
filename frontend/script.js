@@ -10,14 +10,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const errorBox = document.getElementById("error");
 
-  const resultSection =
-    document.getElementById("resultSection");
-
-  const resultNumber =
-    document.getElementById("resultNumber");
-
-  const resultList =
-    document.getElementById("resultList");
+  const resultSection = document.getElementById("resultSection");
+  const resultNumber = document.getElementById("resultNumber");
+  const resultList = document.getElementById("resultList");
 
   if (
     !form ||
@@ -29,9 +24,7 @@ document.addEventListener("DOMContentLoaded", () => {
     !resultNumber ||
     !resultList
   ) {
-    console.error(
-      "PhoneLens: Required HTML elements were not found."
-    );
+    console.error("PhoneLens: Required HTML elements were not found.");
     return;
   }
 
@@ -64,7 +57,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     hideError();
-
     setLoading(true);
 
     resultSection.classList.add("hidden");
@@ -72,8 +64,7 @@ document.addEventListener("DOMContentLoaded", () => {
     resultNumber.textContent = "—";
 
     try {
-      const url =
-        `${API_BASE}/api/search?phone=${encodeURIComponent(phone)}`;
+      const url = `${API_BASE}/api/search?phone=${encodeURIComponent(phone)}`;
 
       console.log("PhoneLens request:", url);
 
@@ -86,58 +77,34 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const text = await response.text();
 
-      console.log(
-        "PhoneLens response status:",
-        response.status
-      );
-
-      console.log(
-        "PhoneLens raw response:",
-        text
-      );
+      console.log("PhoneLens response status:", response.status);
+      console.log("PhoneLens raw response:", text);
 
       let data;
 
       try {
         data = JSON.parse(text);
       } catch (jsonError) {
-        throw new Error(
-          "PhoneLens API returned an invalid response."
-        );
+        throw new Error("PhoneLens API returned an invalid response.");
       }
 
-      console.log(
-        "PhoneLens parsed data:",
-        data
-      );
+      console.log("PhoneLens parsed data:", data);
 
       if (!response.ok) {
         throw new Error(
-          data.error ||
-          `API request failed (${response.status})`
+          data.error || `API request failed (${response.status})`
         );
       }
 
       if (data.success !== true) {
-        throw new Error(
-          data.error ||
-          "PhoneLens search failed."
-        );
+        throw new Error(data.error || "PhoneLens search failed.");
       }
 
       renderResult(data);
-
     } catch (error) {
-      console.error(
-        "PhoneLens search error:",
-        error
-      );
+      console.error("PhoneLens search error:", error);
 
-      showError(
-        error.message ||
-        "Unable to connect to PhoneLens API."
-      );
-
+      showError(error.message || "Unable to connect to PhoneLens API.");
     } finally {
       setLoading(false);
     }
@@ -147,8 +114,7 @@ document.addEventListener("DOMContentLoaded", () => {
    * Loading state
    */
   function setLoading(isLoading) {
-    const searchButton =
-      form.querySelector(".search-btn");
+    const searchButton = form.querySelector(".search-btn");
 
     if (searchButton) {
       searchButton.disabled = isLoading;
@@ -168,29 +134,24 @@ document.addEventListener("DOMContentLoaded", () => {
    */
   function renderResult(data) {
     const info =
-      data.data &&
-      typeof data.data === "object"
-        ? data.data
-        : {};
+      data.data && typeof data.data === "object" ? data.data : {};
 
     const components =
-      info.components &&
-      typeof info.components === "object"
+      info.components && typeof info.components === "object"
         ? info.components
         : {};
 
     const formats =
-      info.formats &&
-      typeof info.formats === "object"
-        ? info.formats
+      info.formats && typeof info.formats === "object" ? info.formats : {};
+
+    const telecomCircle =
+      info.telecomCircle && typeof info.telecomCircle === "object"
+        ? info.telecomCircle
         : {};
 
     /*
      * Backend returns:
-     *
-     * phoneNumber
-     * searchedNumber
-     * normalizedNumber
+     * phoneNumber, searchedNumber, normalizedNumber
      */
     const phoneNumber =
       data.phoneNumber ||
@@ -198,8 +159,7 @@ document.addEventListener("DOMContentLoaded", () => {
       data.searchedNumber ||
       "—";
 
-    resultNumber.textContent =
-      phoneNumber;
+    resultNumber.textContent = phoneNumber;
 
     /*
      * Build information cards
@@ -224,89 +184,48 @@ document.addEventListener("DOMContentLoaded", () => {
           : "Unknown"
     );
 
-    html += card(
-      "COUNTRY",
-      info.country
-    );
+    html += card("COUNTRY", info.country);
 
     html += card(
       "COUNTRY CODE",
-      info.countryCode
-        ? `+${info.countryCode}`
-        : null
+      info.countryCode ? `+${info.countryCode}` : null
     );
 
-    html += card(
-      "CARRIER",
-      info.carrier
-    );
+    html += card("CARRIER", info.carrier);
 
-    html += card(
-      "LINE TYPE",
-      info.type
-    );
+    html += card("LINE TYPE", info.type);
 
-    html += card(
-      "GEOGRAPHIC REGION",
-      info.location
-    );
+    html += card("GEOGRAPHIC REGION", info.location);
 
-    html += card(
-      "TIMEZONE",
-      info.timezone
-    );
+    /* Telecom circle (e.g. UP East) + original operator */
+    html += card("TELECOM CIRCLE", telecomCircle.circle);
 
-    html += card(
-      "AREA CODE",
-      components.areaCode
-    );
+    html += card("ORIGINAL OPERATOR", telecomCircle.operator);
 
-    html += card(
-      "LOCAL NUMBER",
-      components.localNumber
-    );
+    html += card("TIMEZONE", info.timezone);
 
-    html += card(
-      "EXTENSION",
-      components.extension
-    );
+    html += card("AREA CODE", components.areaCode);
 
-    html += card(
-      "INTERNATIONAL FORMAT",
-      formats.international
-    );
+    html += card("LOCAL NUMBER", components.localNumber);
 
-    html += card(
-      "NATIONAL FORMAT",
-      formats.national
-    );
+    html += card("EXTENSION", components.extension);
 
-    html += card(
-      "E.164 FORMAT",
-      formats.e164
-    );
+    html += card("INTERNATIONAL FORMAT", formats.international);
 
-    html += card(
-      "SANITIZED NUMBER",
-      info.sanitized
-    );
+    html += card("NATIONAL FORMAT", formats.national);
 
-    if (
-      Array.isArray(info.possibleTypes) &&
-      info.possibleTypes.length
-    ) {
-      html += card(
-        "POSSIBLE NUMBER TYPES",
-        info.possibleTypes.join(", ")
-      );
+    html += card("E.164 FORMAT", formats.e164);
+
+    html += card("SANITIZED NUMBER", info.sanitized);
+
+    if (Array.isArray(info.possibleTypes) && info.possibleTypes.length) {
+      html += card("POSSIBLE NUMBER TYPES", info.possibleTypes.join(", "));
     }
 
     /*
      * Public web results
      */
-    html += renderPublicWeb(
-      data.publicWeb
-    );
+    html += renderPublicWeb(data.publicWeb);
 
     resultList.innerHTML = html;
 
@@ -350,13 +269,8 @@ document.addEventListener("DOMContentLoaded", () => {
       return `
         <div class="web-results">
           <div class="web-heading">
-            <span class="small-title">
-              PUBLIC WEB
-            </span>
-
-            <h3>
-              Public Web Results
-            </h3>
+            <span class="small-title">PUBLIC WEB</span>
+            <h3>Public Web Results</h3>
           </div>
 
           <div class="web-empty">
@@ -366,101 +280,68 @@ document.addEventListener("DOMContentLoaded", () => {
       `;
     }
 
-    const results =
-      publicWeb.results;
+    const results = publicWeb.results;
 
     return `
       <div class="web-results">
 
         <div class="web-heading">
-          <span class="small-title">
-            TAVILY SEARCH
-          </span>
-
-          <h3>
-            Public Web Results
-          </h3>
-
-          <span class="web-count">
-            ${results.length} results
-          </span>
+          <span class="small-title">TAVILY SEARCH</span>
+          <h3>Public Web Results</h3>
+          <span class="web-count">${results.length} results</span>
         </div>
 
         <div class="web-list">
 
-          ${results.map((item, index) => {
+          ${results
+            .map((item, index) => {
+              const title = item.title || "Public Web Result";
 
-            const title =
-              item.title ||
-              "Public Web Result";
+              const url = item.url || "";
 
-            const url =
-              item.url ||
-              "";
+              const snippet = item.snippet || "No description available.";
 
-            const snippet =
-              item.snippet ||
-              "No description available.";
+              const score =
+                typeof item.score === "number"
+                  ? Math.round(item.score * 100)
+                  : null;
 
-            const score =
-              typeof item.score === "number"
-                ? Math.round(item.score * 100)
-                : null;
+              let domain = "";
 
-            let domain = "";
+              try {
+                domain = url ? new URL(url).hostname : "";
+              } catch {
+                domain = url;
+              }
 
-            try {
-              domain = url
-                ? new URL(url).hostname
-                : "";
-            } catch {
-              domain = url;
-            }
-
-            return `
+              return `
               <article class="web-card">
 
-                <div class="web-index">
-                  ${index + 1}
-                </div>
+                <div class="web-index">${index + 1}</div>
 
                 <div class="web-content">
 
-                  <h4>
-                    ${escapeHTML(title)}
-                  </h4>
+                  <h4>${escapeHTML(title)}</h4>
 
-                  <div class="web-domain">
-                    ${escapeHTML(domain)}
-                  </div>
+                  <div class="web-domain">${escapeHTML(domain)}</div>
 
-                  <p>
-                    ${escapeHTML(snippet)}
-                  </p>
+                  <p>${escapeHTML(snippet)}</p>
 
                   <div class="web-bottom">
 
                     ${
                       score !== null
-                        ? `
-                          <span class="web-score">
-                            Relevance ${score}%
-                          </span>
-                        `
+                        ? `<span class="web-score">Relevance ${score}%</span>`
                         : ""
                     }
 
                     ${
                       url
-                        ? `
-                          <a
+                        ? `<a
                             href="${escapeAttribute(url)}"
                             target="_blank"
                             rel="noopener noreferrer"
-                          >
-                            Open Result ↗
-                          </a>
-                        `
+                          >Open Result ↗</a>`
                         : ""
                     }
 
@@ -470,7 +351,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
               </article>
             `;
-          }).join("")}
+            })
+            .join("")}
 
         </div>
 
@@ -482,9 +364,7 @@ document.addEventListener("DOMContentLoaded", () => {
    * Error
    */
   function showError(message) {
-    errorBox.textContent =
-      message || "Something went wrong.";
-
+    errorBox.textContent = message || "Something went wrong.";
     errorBox.classList.remove("hidden");
   }
 
@@ -509,3 +389,4 @@ document.addEventListener("DOMContentLoaded", () => {
     return escapeHTML(value);
   }
 });
+      
