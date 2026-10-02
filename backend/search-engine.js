@@ -122,6 +122,83 @@ async function getPhoneMetadata(normalized) {
 }
 
 /* =========================
+   TELECOM CIRCLE (INDIA)
+========================= */
+
+/*
+ * Option 1 (free): local file indiaSeries.json in the same folder:
+ * {
+ *   "9582": { "operator": "Vodafone", "circle": "Delhi" },
+ *   "6392": { "operator": "Jio", "circle": "UP East" }
+ * }
+ * Key = first 4 digits of the 10-digit number.
+ * Data source: DoT numbering plan / Wikipedia "Mobile telephone
+ * numbering in India" series table.
+ *
+ * Option 2 (accurate, paid): Exotel Number Metadata API.
+ * Set EXOTEL_SID, EXOTEL_API_KEY, EXOTEL_API_TOKEN env vars.
+ */
+
+let seriesTable = null;
+
+function loadSeriesTable() {
+  if (seriesTable !== null) return seriesTable;
+
+  try {
+    seriesTable = require("./indiaSeries.json");
+  } catch {
+    seriesTable = {};
+  }
+
+  return seriesTable;
+}
+
+async function getIndiaCircle(indianLocal) {
+  if (!indianLocal || indianLocal.length !== 10) return null;
+
+  // Exotel (if configured)
+  const { EXOTEL_SID, EXOTEL_API_KEY, EXOTEL_API_TOKEN } = process.env;
+
+  if (EXOTEL_SID && EXOTEL_API_KEY && EXOTEL_API_TOKEN) {
+    try {
+      const auth = Buffer.from(
+        `${EXOTEL_API_KEY}:${EXOTEL_API_TOKEN}`
+      ).toString("base64");
+
+      const res = await requestJSON(
+        `https://api.exotel.com/v1/Accounts/${EXOTEL_SID}/Numbers/0${indianLocal}.json`,
+        { headers: { Authorization: `Basic ${auth}` } }
+      );
+
+      const r = res.Numbers || res;
+
+      if (r.CircleName || r.Circle) {
+        return {
+          circle: r.CircleName || r.Circle,
+          operator: r.OperatorName || r.Operator || null,
+          source: "exotel"
+        };
+      }
+    } catch (error) {
+      console.error("Exotel error:", error.message);
+    }
+  }
+
+  // Local series table
+  const entry = loadSeriesTable()[indianLocal.slice(0, 4)];
+
+  if (entry) {
+    return {
+      circle: entry.circle || null,
+      operator: entry.operator || null,
+      source: "series-table"
+    };
+  }
+
+  return null;
+}
+
+/* =========================
    NUMBER VARIANTS
 ========================= */
 
@@ -260,7 +337,23 @@ async function searchPublicWeb(phoneNumber, normalized) {
 
   try {
     // each exact variant searched separately
-    const jobs = exactQueries.map((q) => tavilySearch(q));
+    const base = indianLocal || normalizedDigits;
+    const spaced =
+      indianLocal.length === 10
+        ? `${indianLocal.slice(0, 5)} ${indianLocal.slice(5)}`
+        : base;
+
+    // extra queries: pages that publicly list a number usually say
+    // "contact", "call", "whatsapp", "enquiry" etc. near it
+    const contextQueries = [
+      `"${base}" contact us`,
+      `"${spaced}" call OR whatsapp OR enquiry`,
+      `"+91 ${spaced}" mobile`
+    ];
+
+    const jobs = [...exactQueries, ...contextQueries].map((q) =>
+      tavilySearch(q)
+    );
 
     const settled = await Promise.allSettled(jobs);
 
@@ -413,6 +506,21 @@ async function searchPhoneNumber(phoneNumber) {
     addResult(results, "Possible Types", data.possibleTypes.join(", "));
   }
 
+  // Telecom circle (e.g. "UP East") for Indian numbers
+  const normDigits = normalized.replace(/\D/g, "");
+  const indianLocal =
+    normDigits.length === 12 && normDigits.startsWith("91")
+      ? normDigits.slice(2)
+      : "";
+
+  const circleInfo = await getIndiaCircle(indianLocal);
+  data.telecomCircle = circleInfo;
+
+  if (circleInfo) {
+    addResult(results, "Telecom Circle", circleInfo.circle);
+    addResult(results, "Original Operator", circleInfo.operator);
+  }
+
   // Public web search is separate; metadata works even if it fails
   const publicWeb = await searchPublicWeb(phoneNumber, normalized);
 
@@ -431,4 +539,4 @@ async function searchPhoneNumber(phoneNumber) {
 module.exports = {
   searchPhoneNumber
 };
-      
+              
