@@ -24,9 +24,9 @@
     </header>
 
     <section class="hero">
-      <div class="badge">PHONE LOOKUP</div>
+      <div class="badge">PUBLIC LOOKUP</div>
 
-      <h2>Search a phone number</h2>
+      <h2>Search a number or username</h2>
 
       <p class="subtitle">
         Check information available from lawful public data sources.
@@ -34,12 +34,15 @@
 
       <form id="searchForm">
         <div class="input-box">
-          <span class="prefix">📱</span>
+          <span class="prefix">🔎</span>
           <input
             id="phoneInput"
-            type="tel"
-            placeholder="Enter phone number"
+            type="text"
+            inputmode="text"
+            placeholder="Phone number ya username"
             autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false"
             required
           >
           <button type="button" id="clearBtn">×</button>
@@ -66,7 +69,7 @@
       </div>
 
       <div class="number-card">
-        <span>PHONE NUMBER</span>
+        <span>SEARCHED</span>
         <strong id="resultNumber">—</strong>
       </div>
 
@@ -89,7 +92,7 @@
       <span>API Status: Online</span>
     </footer>
 
-  </div>
+  </main>
 
   <script src="script.js"></script>
 </body>
