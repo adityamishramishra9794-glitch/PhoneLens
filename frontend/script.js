@@ -64,6 +64,12 @@ document.addEventListener("DOMContentLoaded", () => {
     resultNumber.textContent = "—";
 
     try {
+      /* Letters hain to username search, warna phone search */
+      if (/[a-zA-Z]/.test(phone)) {
+        await runUsernameSearch(phone);
+        return;
+      }
+
       const url = `${API_BASE}/api/search?phone=${encodeURIComponent(phone)}`;
 
       console.log("PhoneLens request:", url);
@@ -109,6 +115,63 @@ document.addEventListener("DOMContentLoaded", () => {
       setLoading(false);
     }
   });
+
+  /*
+   * Username search (public profile pages)
+   */
+  async function runUsernameSearch(name) {
+    const response = await fetch(
+      `${API_BASE}/api/username?name=${encodeURIComponent(name)}`,
+      { headers: { Accept: "application/json" } }
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || data.success !== true) {
+      throw new Error(data.error || "Username search failed.");
+    }
+
+    resultNumber.textContent = `@${data.username}`;
+
+    const link = (item) => `
+      <div class="info-card">
+        <span>${escapeHTML(item.site)}</span>
+        <strong>
+          <a href="${escapeAttribute(item.url)}"
+             target="_blank" rel="noopener noreferrer">${escapeHTML(item.url)}</a>
+        </strong>
+      </div>
+    `;
+
+    let html = card(
+      "CHECKED SITES",
+      `${data.checkedSites} sites, ${data.found.length} profile page mile`
+    );
+
+    html += data.found.length
+      ? data.found.map(link).join("")
+      : card("RESULT", "Is username ka profile in sites par nahi mila.");
+
+    if (data.unknownCount > 0) {
+      html += card(
+        "NOT VERIFIED",
+        `${data.unknownCount} sites ne check block kiya ya jawab nahi diya`
+      );
+    }
+
+    html += `
+      <div class="web-heading">
+        <span class="small-title">MANUAL CHECK</span>
+        <h3>Ye sites khud kholke dekh</h3>
+      </div>
+    ` + (data.manual || []).map(link).join("");
+
+    html += card("NOTE", data.note);
+
+    resultList.innerHTML = html;
+    resultSection.classList.remove("hidden");
+    resultSection.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   /*
    * Loading state
@@ -389,4 +452,4 @@ document.addEventListener("DOMContentLoaded", () => {
     return escapeHTML(value);
   }
 });
-      
+                 
