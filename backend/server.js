@@ -1,63 +1,108 @@
-const express = require("express");
-const cors = require("cors");
-const { searchPhoneNumber } = require("./search-engine");
+// PhoneLens backend (koi extra package nahi chahiye, sirf Node ka built-in http)
+// Routes:
+//   GET /                      -> status
+//   GET /health                -> health check
+//   GET /api/search?phone=...  -> phone lookup
+//   GET /api/username?name=... -> username public profile check
 
-const app = express();
+const http = require("http");
+const { searchPhoneNumber } = require("./search-engine");
+const { searchUsername } = require("./usernameSearch");
+
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
-app.use(express.json());
+function sendJSON(res, status, payload) {
+  const body = JSON.stringify(payload);
 
-app.get("/", (req, res) => {
-  res.json({
-    success: true,
-    name: "PhoneLens API",
-    status: "online"
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Length": Buffer.byteLength(body),
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Accept"
   });
-});
 
-app.get("/healthz", (req, res) => {
-  res.json({
-    success: true,
-    status: "healthy"
-  });
-});
+  res.end(body);
+}
 
-app.get("/api/health", (req, res) => {
-  res.json({
-    success: true,
-    status: "online"
-  });
-});
+const server = http.createServer(async (req, res) => {
+  // CORS preflight
+  if (req.method === "OPTIONS") {
+    return sendJSON(res, 204, {});
+  }
 
-app.get("/api/search", async (req, res) => {
+  let url;
+
   try {
-    const phoneNumber = String(req.query.phone || "").trim();
+    url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  } catch {
+    return sendJSON(res, 400, { success: false, error: "Bad request" });
+  }
 
-    if (!phoneNumber) {
-      return res.status(400).json({
-        success: false,
-        error: "Phone number is required",
-        example: "/api/search?phone=9876543210"
+  if (req.method !== "GET") {
+    return sendJSON(res, 405, {
+      success: false,
+      error: "Method not allowed"
+    });
+  }
+
+  try {
+    // Status
+    if (url.pathname === "/" || url.pathname === "/health") {
+      return sendJSON(res, 200, {
+        success: true,
+        service: "PhoneLens API",
+        status: "online"
       });
     }
 
-    const result = await searchPhoneNumber(phoneNumber);
+    // Phone search
+    if (url.pathname === "/api/search") {
+      const phone = (url.searchParams.get("phone") || "").trim();
 
-    res.json({
-      success: true,
-      ...result
-    });
+      if (!phone) {
+        return sendJSON(res, 400, {
+          success: false,
+          error: "Phone number is required"
+        });
+      }
+
+      const result = await searchPhoneNumber(phone);
+
+      return sendJSON(res, 200, { success: true, ...result });
+    }
+
+    // Username search
+    if (url.pathname === "/api/username") {
+      const name = (url.searchParams.get("name") || "").trim();
+
+      if (!name) {
+        return sendJSON(res, 400, {
+          success: false,
+          error: "Username is required"
+        });
+      }
+
+      const result = await searchUsername(name);
+
+      return sendJSON(res, 200, { success: true, ...result });
+    }
+
+    return sendJSON(res, 404, { success: false, error: "Not found" });
   } catch (error) {
-    console.error("Search error:", error);
+    console.error("Server error:", error.message);
 
-    res.status(500).json({
+    const isInputError =
+      /required|valid username/i.test(error.message || "");
+
+    return sendJSON(res, isInputError ? 400 : 500, {
       success: false,
-      error: "Search failed"
+      error: error.message || "Internal server error"
     });
   }
 });
 
-app.listen(PORT, "0.0.0.0", () => {
+server.listen(PORT, () => {
   console.log(`PhoneLens API running on port ${PORT}`);
 });
+                      
