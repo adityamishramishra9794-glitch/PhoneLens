@@ -5,11 +5,11 @@ const PHONE_API = "https://libphonenumberapi.com/api/phone-numbers/";
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 
 /*
- * Sites jahan number "mention" hota hai (listings, classifieds, job portals,
- * public posts, blogs, spam reports). Sirf yahi check hota hai ki number
- * page par likha hai ya nahi. Aur sites chahiye to bas yahan add kar de.
+ * Sites jahan number "mention" hota hai (check hota hai ki number page par
+ * likha hai ya nahi). Aur sites chahiye to bas yahan add kar de.
+ * Har site double quotes me ho aur uske baad comma ho.
  */
-const PUBLIC_SITES = [
+const PUBLIC_SITES_RAW = [
   // business directories
   "justdial.com", "indiamart.com", "sulekha.com", "tradeindia.com",
   "exportersindia.com", "yellowpages.in", "grotal.com", "tuugo.in",
@@ -29,8 +29,9 @@ const PUBLIC_SITES = [
   "weebly.com", "github.com", "pastebin.com", "scribd.com",
   "slideshare.net", "issuu.com", "behance.net",
   // spam / scam reports
-  "tellows.in", "800notes.com", "shouldianswer.com", "whocallsme.com"
-    // messaging / communication
+  "tellows.in", "800notes.com", "shouldianswer.com", "whocallsme.com",
+
+  // messaging / communication
   "whatsapp.com", "messenger.com", "signal.org", "viber.com",
   "imo.im", "skype.com", "zoom.us", "slack.com", "line.me",
   "telegram.org", "discord.com",
@@ -125,6 +126,9 @@ const PUBLIC_SITES = [
   "tata1mg.com", "apollo247.com", "pharmeasy.in",
   "netmeds.com", "cult.fit", "fitbit.com", "strava.com"
 ];
+
+// duplicate sites hata deta hai
+const PUBLIC_SITES = [...new Set(PUBLIC_SITES_RAW)];
 
 const PROFILE_DOMAINS = PUBLIC_SITES;
 
@@ -443,8 +447,8 @@ async function searchPublicWeb(phoneNumber, normalized) {
 
     // site-scoped searches: number in sites ki list me mention hai ya nahi
     const siteChunks = [];
-    for (let i = 0; i < PUBLIC_SITES.length; i += 20) {
-      siteChunks.push(PUBLIC_SITES.slice(i, i + 20));
+    for (let i = 0; i < PUBLIC_SITES.length; i += 50) {
+      siteChunks.push(PUBLIC_SITES.slice(i, i + 50));
     }
 
     const siteJobs = siteChunks.flatMap((domains) =>
@@ -645,4 +649,4 @@ async function searchPhoneNumber(phoneNumber) {
 module.exports = {
   searchPhoneNumber
 };
-                     
+  
