@@ -1,4 +1,4 @@
-const https = require("https");
+yconst https = require("https");
 const { lookupSeries } = require("./indiaSeries");
 
 const PHONE_API = "https://libphonenumberapi.com/api/phone-numbers/";
@@ -30,6 +30,100 @@ const PUBLIC_SITES = [
   "slideshare.net", "issuu.com", "behance.net",
   // spam / scam reports
   "tellows.in", "800notes.com", "shouldianswer.com", "whocallsme.com"
+    // messaging / communication
+  "whatsapp.com", "messenger.com", "signal.org", "viber.com",
+  "imo.im", "skype.com", "zoom.us", "slack.com", "line.me",
+  "telegram.org", "discord.com",
+
+  // social / communities
+  "snapchat.com", "tiktok.com", "threads.net", "mastodon.social",
+  "bluesky.app", "vk.com", "weibo.com", "flickr.com",
+  "500px.com", "meetup.com",
+
+  // Microsoft / Apple
+  "microsoft.com", "live.com", "outlook.com", "office.com",
+  "onedrive.com", "sharepoint.com", "apple.com", "icloud.com",
+  "me.com",
+
+  // payments / UPI / finance
+  "phonepe.com", "amazonpay.in", "mobikwik.com", "freecharge.in",
+  "jio.com", "cred.club", "cashfree.com", "payu.in",
+  "billdesk.com", "zerodha.com", "groww.in", "upstox.com",
+  "angelone.in", "policybazaar.com",
+
+  // Indian banks
+  "sbi.co.in", "hdfcbank.com", "icicibank.com", "axisbank.com",
+  "kotak.com", "pnbindia.in", "bankofbaroda.in", "canarabank.com",
+  "indianbank.in", "unionbankofindia.co.in", "idfcfirstbank.com",
+  "indusind.com", "yesbank.in", "federalbank.co.in",
+  "rblbank.com", "bandhanbank.com",
+
+  // shopping / ecommerce
+  "amazon.com", "shopify.com", "walmart.com", "ebay.com",
+  "etsy.com", "bestbuy.com", "homedepot.com", "target.com",
+  "costco.com", "aliexpress.com", "temu.com", "lenskart.com",
+  "titan.co.in", "nike.com", "adidas.com", "puma.com",
+  "uniqlo.com", "decathlon.in", "ikea.com",
+
+  // smartphones / electronics
+  "samsung.com", "mi.com", "oneplus.in", "vivo.com",
+  "motorola.in", "realme.com",
+
+  // food / delivery
+  "dominos.co.in", "mcdonalds.com", "pizzahut.co.in",
+  "ubereats.com", "dunzo.com", "instamart.com",
+
+  // travel / transport
+  "makemytrip.com", "goibibo.com", "cleartrip.com", "ixigo.com",
+  "yatra.com", "easemytrip.com", "redbus.in", "abhibus.com",
+  "uber.com", "ola.com", "rapido.bike", "booking.com",
+  "agoda.com", "airbnb.com", "trip.com", "skyscanner.net",
+  "kayak.com", "expedia.com", "tripadvisor.co.in",
+
+  // education / learning
+  "duolingo.com", "coursera.org", "edx.org", "udemy.com",
+  "khanacademy.org", "codecademy.com", "freecodecamp.org",
+  "w3schools.com", "geeksforgeeks.org", "programiz.com",
+  "brilliant.org", "skillshare.com", "pluralsight.com",
+  "udacity.com", "greatlearning.in",
+
+  // news / media
+  "bbc.com", "cnn.com", "reuters.com", "forbes.com",
+  "theguardian.com", "nytimes.com", "washingtonpost.com",
+  "deccanherald.com", "telegraphindia.com", "tribuneindia.com",
+  "outlookindia.com", "scroll.in", "theprint.in",
+
+  // entertainment / streaming
+  "netflix.com", "primevideo.com", "hotstar.com",
+  "disneyplus.com", "sonyliv.com", "zee5.com",
+  "vimeo.com", "dailymotion.com", "spotify.com",
+  "soundcloud.com", "gaana.com", "jiosaavn.com", "wynk.in",
+  "hulu.com", "paramountplus.com",
+
+  // maps / reviews
+  "openstreetmap.org", "here.com", "trustpilot.com",
+  "tripadvisor.com", "mapquest.com",
+
+  // developer / technology
+  "gitlab.com", "bitbucket.org", "stackoverflow.com",
+  "npmjs.com", "pypi.org", "docker.com", "kaggle.com",
+  "huggingface.co", "replit.com", "codepen.io",
+  "jsfiddle.net", "sourceforge.net", "vercel.com",
+  "netlify.com",
+
+  // cloud / productivity
+  "dropbox.com", "box.com", "mega.io", "mediafire.com",
+  "canva.com", "figma.com", "notion.so", "evernote.com",
+  "trello.com", "asana.com", "miro.com",
+
+  // gaming
+  "twitch.tv", "steamcommunity.com", "steampowered.com",
+  "epicgames.com", "roblox.com", "ea.com", "ubisoft.com",
+  "playstation.com", "xbox.com",
+
+  // health / fitness
+  "tata1mg.com", "apollo247.com", "pharmeasy.in",
+  "netmeds.com", "cult.fit", "fitbit.com", "strava.com"
 ];
 
 const PROFILE_DOMAINS = PUBLIC_SITES;
