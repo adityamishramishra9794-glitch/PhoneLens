@@ -1,4 +1,4 @@
-yconst https = require("https");
+const https = require("https");
 const { lookupSeries } = require("./indiaSeries");
 
 const PHONE_API = "https://libphonenumberapi.com/api/phone-numbers/";
